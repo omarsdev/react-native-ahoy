@@ -26,7 +26,8 @@ export interface Spec extends TurboModule {
   endCall(uuid: string): void;
   endAllCalls(): void;
   rejectCall(uuid: string): void;
-  reportEndCallWithUUID(uuid: string, reason: number): void; // reason = END_CALL_REASONS code
+  reportEndCallWithUUID(uuid: string, reason: number): void; // reason = END_CALL_REASONS / CXCallEndedReason code
+  reportConnectedOutgoingCall(uuid: string): void; // T2: mark an outgoing call connected (UI timer starts)
   updateDisplay(uuid: string, displayName: string, handle: string): void;
   setMutedCall(uuid: string, muted: boolean): void;
   setOnHold(uuid: string, hold: boolean): void;
@@ -45,7 +46,22 @@ export interface Spec extends TurboModule {
     handle: string;
     fromPushKit: boolean;
   }>;
+  // T2 (iOS CallKit) delegate callbacks surfaced to JS:
+  readonly onStartCallAction: CodegenTypes.EventEmitter<{
+    uuid: string;
+    handle: string;
+  }>;
+  readonly onToggleMute: CodegenTypes.EventEmitter<{
+    uuid: string;
+    muted: boolean;
+  }>;
+  readonly onToggleHold: CodegenTypes.EventEmitter<{
+    uuid: string;
+    onHold: boolean;
+  }>;
+  readonly onProviderReset: CodegenTypes.EventEmitter<void>;
   readonly onDidActivateAudioSession: CodegenTypes.EventEmitter<void>;
+  readonly onDidDeactivateAudioSession: CodegenTypes.EventEmitter<void>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('Ahoy');

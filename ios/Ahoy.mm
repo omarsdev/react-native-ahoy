@@ -1,11 +1,14 @@
 #import "Ahoy.h"
-#import "Ahoy-Swift.h" // compiler-generated; product-module name (TODO T2: confirm sanitized name)
+#import <CallKit/CallKit.h> // must precede Ahoy-Swift.h: it exposes AhoyCallKit's <CXProviderDelegate>
+#import "Ahoy-Swift.h"      // compiler-generated; product-module name is "Ahoy"
 
-// T1 skeleton: every method is a stub mapped to the ticket that implements it.
-// No CallKit/PushKit logic here yet — that lands in T2/T4. The real work lives
-// in AhoyCallKit.swift (reached via @objc), this .mm is the thin TurboModule shell.
+// Conform to the Swift event delegate in a class extension so the Swift CallKit
+// core (AhoyCallKit) can push delegate callbacks back to JS through this module.
+@interface Ahoy () <AhoyEventDelegate>
+@end
+
 @implementation Ahoy {
-  AhoyCallKit *_callKit; // Swift impl home, filled in T2/T4
+  AhoyCallKit *_callKit;
 }
 
 + (NSString *)moduleName
@@ -16,7 +19,8 @@
 - (instancetype)init
 {
   if (self = [super init]) {
-    _callKit = [AhoyCallKit new]; // proves the Obj-C++ -> Swift @objc bridge links
+    _callKit = [AhoyCallKit new];
+    _callKit.eventDelegate = self;
   }
   return self;
 }
@@ -27,91 +31,108 @@
   return std::make_shared<facebook::react::NativeAhoySpecJSI>(params);
 }
 
-#pragma mark - Lifecycle (both platforms)
+#pragma mark - Setup / lifecycle
 
 - (void)setup:(NSDictionary *)options
       resolve:(RCTPromiseResolveBlock)resolve
        reject:(RCTPromiseRejectBlock)reject
 {
-  // TODO(T2): configure CXProvider/CXProviderConfiguration via _callKit; resolve for now
+  // CallKit provider is created in AhoyCallKit init; nothing else to do for T2.
+  // TODO(T4): apply options (ringtone, icon, supportsVideo) to CXProviderConfiguration.
   resolve(nil);
 }
+
+#pragma mark - Outgoing
 
 - (void)startCall:(JS::NativeAhoy::SpecStartCallOpts &)opts
           resolve:(RCTPromiseResolveBlock)resolve
            reject:(RCTPromiseRejectBlock)reject
 {
-  // TODO(T2): CXStartCallAction via CXCallController
+  [_callKit startCall:opts.uuid()
+               handle:opts.handle()
+             hasVideo:opts.hasVideo().value_or(false)];
   resolve(nil);
 }
+
+- (void)reportConnectedOutgoingCall:(NSString *)uuid
+{
+  [_callKit reportConnectedOutgoingCall:uuid];
+}
+
+#pragma mark - Incoming (JS-driven in T2)
 
 - (void)displayIncomingCall:(JS::NativeAhoy::SpecDisplayIncomingCallOpts &)opts
                     resolve:(RCTPromiseResolveBlock)resolve
                      reject:(RCTPromiseRejectBlock)reject
 {
-  // TODO(T4): CXProvider reportNewIncomingCallWithUUID:update:completion:
+  NSString *callerName = opts.localizedCallerName() ?: @"";
+  [_callKit displayIncomingCall:opts.uuid()
+                         handle:opts.handle()
+            localizedCallerName:callerName
+                       hasVideo:opts.hasVideo().value_or(false)];
   resolve(nil);
 }
 
+#pragma mark - Local actions
+
 - (void)answerIncomingCall:(NSString *)uuid
 {
-  // TODO(T2): CXAnswerCallAction; then [self emitOnAnswerCall:@{@"uuid": uuid}];
+  [_callKit answerCall:uuid];
 }
 
 - (void)endCall:(NSString *)uuid
 {
-  // TODO(T2): CXEndCallAction
+  [_callKit endCall:uuid];
 }
 
 - (void)endAllCalls
 {
-  // TODO(T2): end every CXCall via CXCallController
+  [_callKit endAllCalls];
 }
 
 - (void)rejectCall:(NSString *)uuid
 {
-  // TODO(T2): CXEndCallAction on an incoming call
+  // CallKit has no distinct "reject": ending the incoming call rejects it.
+  [_callKit endCall:uuid];
 }
 
 - (void)reportEndCallWithUUID:(NSString *)uuid
                        reason:(double)reason
 {
-  // TODO(T2): CXProvider reportCallWithUUID:endedAtDate:reason: (reason = END_CALL_REASONS code)
+  [_callKit reportEndCall:uuid reason:(NSInteger)reason];
 }
 
 - (void)updateDisplay:(NSString *)uuid
           displayName:(NSString *)displayName
                handle:(NSString *)handle
 {
-  // TODO(T2): CXProvider reportCallWithUUID:updated: with a new CXCallUpdate
+  [_callKit updateDisplay:uuid displayName:displayName handle:handle];
 }
 
 - (void)setMutedCall:(NSString *)uuid
                muted:(BOOL)muted
 {
-  // TODO(T2): CXSetMutedCallAction
+  [_callKit setMuted:uuid muted:muted];
 }
 
 - (void)setOnHold:(NSString *)uuid
              hold:(BOOL)hold
 {
-  // TODO(T2): CXSetHeldCallAction
+  [_callKit setHeld:uuid onHold:hold];
 }
 
-#pragma mark - Platform-guarded (Android-only: no-op stubs on iOS)
+#pragma mark - Platform-guarded (Android-only: no-op on iOS)
 
 - (void)setAvailable:(BOOL)available
              resolve:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject
 {
-  // Android-only (TelecomManager availability). No-op on iOS.
   resolve(nil);
 }
 
 - (void)checkIsInManagedCall:(RCTPromiseResolveBlock)resolve
                       reject:(RCTPromiseRejectBlock)reject
 {
-  // Android-only. No-op on iOS.
   resolve(@NO);
 }
 
@@ -121,8 +142,34 @@
              resolve:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject
 {
-  // TODO(T2): query CXCallObserver for an active call with this UUID
-  resolve(@NO);
+  resolve(@([_callKit isCallActive:uuid]));
+}
+
+#pragma mark - AhoyEventDelegate (Swift core -> JS)
+
+- (void)sendEvent:(NSString *)name body:(NSDictionary *)body
+{
+  if ([name isEqualToString:@"onAnswerCall"]) {
+    [self emitOnAnswerCall:body];
+  } else if ([name isEqualToString:@"onEndCall"]) {
+    [self emitOnEndCall:body];
+  } else if ([name isEqualToString:@"onDisplayIncomingCall"]) {
+    [self emitOnDisplayIncomingCall:body];
+  } else if ([name isEqualToString:@"onStartCallAction"]) {
+    [self emitOnStartCallAction:body];
+  } else if ([name isEqualToString:@"onToggleMute"]) {
+    [self emitOnToggleMute:body];
+  } else if ([name isEqualToString:@"onToggleHold"]) {
+    [self emitOnToggleHold:body];
+  } else if ([name isEqualToString:@"onProviderReset"]) {
+    [self emitOnProviderReset];
+  } else if ([name isEqualToString:@"onDidActivateAudioSession"]) {
+    [self emitOnDidActivateAudioSession];
+  } else if ([name isEqualToString:@"onDidDeactivateAudioSession"]) {
+    [self emitOnDidDeactivateAudioSession];
+  } else {
+    NSLog(@"Ahoy: unhandled event %@", name);
+  }
 }
 
 @end

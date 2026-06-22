@@ -51,6 +51,10 @@ class AhoyModule(reactContext: ReactApplicationContext) :
     // TODO(T3): Connection.setDisconnected with a DisconnectCause from the reason code
   }
 
+  override fun reportConnectedOutgoingCall(uuid: String) {
+    // TODO(T3): Connection.setActive once the outgoing call connects
+  }
+
   override fun updateDisplay(uuid: String, displayName: String, handle: String) {
     // TODO(T3): Connection.setCallerDisplayName / setAddress
   }
