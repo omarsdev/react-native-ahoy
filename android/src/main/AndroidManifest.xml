@@ -1,2 +1,36 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- Self-managed Telecom: install-time permission. Telecom silently never
+       binds AhoyConnectionService without it, and it is the access prerequisite
+       for the phoneCall foreground-service type. -->
+  <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+  <!-- Needed later for locked-screen ringing; auto-granted to calling apps on targetSdk 34+. -->
+  <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+  <!-- So the incoming/ongoing call notifications are visible on API 33+. -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <application>
+    <!-- System Telecom binds this; guarded so ONLY Telecom can bind it. -->
+    <service
+      android:name="dev.omars.ahoy.AhoyConnectionService"
+      android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.telecom.ConnectionService" />
+      </intent-filter>
+    </service>
+
+    <!-- Keeps the active call alive; phoneCall is legal because we hold MANAGE_OWN_CALLS. -->
+    <service
+      android:name="dev.omars.ahoy.AhoyCallForegroundService"
+      android:foregroundServiceType="phoneCall"
+      android:exported="false" />
+
+    <!-- Backs the Answer / Decline buttons on the incoming-call notification. -->
+    <receiver
+      android:name="dev.omars.ahoy.AhoyCallActionReceiver"
+      android:exported="false" />
+  </application>
 </manifest>

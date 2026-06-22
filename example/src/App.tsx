@@ -5,6 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Platform,
+  PermissionsAndroid,
 } from 'react-native';
 import Ahoy from 'react-native-ahoy';
 
@@ -44,6 +46,21 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Android 13+: notifications need runtime permission to be visible.
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+      PermissionsAndroid.request(
+        'android.permission.POST_NOTIFICATIONS' as Parameters<
+          typeof PermissionsAndroid.request
+        >[0]
+      )
+        .then((r) => append(`POST_NOTIFICATIONS: ${r}`))
+        .catch(() => {});
+    }
+    // Register the call account (Android: self-managed PhoneAccount; iOS: no-op).
+    Ahoy.setup({ label: 'Ahoy Example' })
+      .then(() => append('setup ok'))
+      .catch((e) => append(`setup failed: ${e}`));
+
     append('subscribing to events');
     const subs = [
       Ahoy.onStartCallAction(({ uuid }) =>
