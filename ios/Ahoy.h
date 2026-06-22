@@ -1,5 +1,7 @@
-#import <AhoySpec/AhoySpec.h>
+#import <AhoySpec/AhoySpec.h> // umbrella header == codegen name (AhoySpec), NOT "NativeAhoySpec.h"
 
-@interface Ahoy : NSObject <NativeAhoySpec>
+// Conform to <NativeAhoySpec> AND inherit NativeAhoySpecBase: the base class
+// provides the generated emitOn… event methods (emitOnAnswerCall, etc.).
+@interface Ahoy : NativeAhoySpecBase <NativeAhoySpec>
 
 @end
