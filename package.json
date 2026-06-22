@@ -1,0 +1,21 @@
+{
+  "name": "react-native-ahoy",
+  "version": "0.0.1",
+  "description": "Native call lifecycle for React Native (New Architecture). Work in progress.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omarsdev/react-native-ahoy.git"
+  },
+  "keywords": [
+    "react-native",
+    "callkit",
+    "connectionservice",
+    "voip",
+    "callkeep"
+  ],
+  "bugs": {
+    "url": "https://github.com/omarsdev/react-native-ahoy/issues"
+  },
+  "homepage": "https://github.com/omarsdev/react-native-ahoy#readme"
+}
