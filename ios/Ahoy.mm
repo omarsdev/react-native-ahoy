@@ -48,10 +48,14 @@
           resolve:(RCTPromiseResolveBlock)resolve
            reject:(RCTPromiseRejectBlock)reject
 {
-  [_callKit startCall:opts.uuid()
-               handle:opts.handle()
-             hasVideo:opts.hasVideo().value_or(false)];
-  resolve(nil);
+  BOOL ok = [_callKit startCall:opts.uuid()
+                         handle:opts.handle()
+                       hasVideo:opts.hasVideo().value_or(false)];
+  if (ok) {
+    resolve(nil);
+  } else {
+    reject(@"ahoy_busy", @"already in a call", nil); // single-outgoing protector
+  }
 }
 
 - (void)reportConnectedOutgoingCall:(NSString *)uuid

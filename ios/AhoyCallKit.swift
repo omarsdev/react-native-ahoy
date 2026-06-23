@@ -1,6 +1,12 @@
 import Foundation
 import CallKit
 import AVFoundation
+import os
+
+// Single logger for the whole module. Messages are marked .public so they show
+// in full (not "<private>") in idevicesyslog / Console on a real device:
+//   idevicesyslog -p AhoyExample -m "[Ahoy]"
+private let ahoyLog = Logger(subsystem: "dev.omars.ahoy", category: "ahoy")
 
 // The Obj-C++ TurboModule (Ahoy.mm) implements this and routes each event to the
 // generated typed emitter (emitOnAnswerCall, emitOnToggleMute, …). Keeping the
@@ -24,9 +30,12 @@ import AVFoundation
 
   private let provider: CXProvider
   private let callController = CXCallController()
+  // True between requesting an outgoing call and the request completing — closes
+  // the rapid-tap race window for the single-outgoing protector.
+  private var placingOutgoing = false
 
   private func log(_ message: String) {
-    NSLog("[Ahoy] %@", message)
+    ahoyLog.notice("[Ahoy] \(message, privacy: .public)")
   }
 
   @objc public override init() {
@@ -66,13 +75,25 @@ import AVFoundation
 
   // MARK: - Outgoing
 
-  @objc public func startCall(_ uuid: String, handle: String, hasVideo: Bool) {
+  // Returns false (→ JS rejects with "ahoy_busy") if a call already exists or one
+  // is being placed. Mirrors the Android native single-outgoing protector.
+  @objc public func startCall(_ uuid: String, handle: String, hasVideo: Bool) -> Bool {
+    let hasCall = callController.callObserver.calls.contains { !$0.hasEnded }
+    if placingOutgoing || hasCall {
+      log("startCall BLOCKED: already in a call / placing uuid=\(uuid)")
+      return false
+    }
+    guard let id = UUID(uuidString: uuid) else { log("startCall: bad uuid"); return false }
     log("startCall <- JS  uuid=\(uuid) handle=\(handle) hasVideo=\(hasVideo)")
-    guard let id = UUID(uuidString: uuid) else { log("startCall: bad uuid"); return }
+    placingOutgoing = true // closes the race before the call reaches the observer
     let cxHandle = CXHandle(type: .generic, value: handle)
     let action = CXStartCallAction(call: id, handle: cxHandle)
     action.isVideo = hasVideo
-    request(action)
+    callController.request(CXTransaction(action: action)) { [weak self] error in
+      self?.placingOutgoing = false
+      if let error = error { self?.log("startCall request error: \(error.localizedDescription)") }
+    }
+    return true
   }
 
   // Call once your signaling reports the remote side answered.
@@ -162,6 +183,17 @@ import AVFoundation
     guard let id = UUID(uuidString: uuid),
           let r = CXCallEndedReason(rawValue: reason) else { log("reportEndCall: bad uuid/reason"); return }
     provider.reportCall(with: id, endedAt: nil, reason: r)
+    resumeHeldCall(except: id) // call waiting: bring back the held call
+  }
+
+  // After the active call ends, resume a call that was on hold (call waiting).
+  private func resumeHeldCall(except endedUuid: UUID?) {
+    let held = callController.callObserver.calls.first {
+      $0.uuid != endedUuid && $0.isOnHold && !$0.hasEnded
+    }
+    guard let held = held else { return }
+    log("auto-resume uuid=\(held.uuid.uuidString) after other call ended")
+    request(CXSetHeldCallAction(call: held.uuid, onHold: false))
   }
 
   @objc public func updateDisplay(_ uuid: String, displayName: String, handle: String) {
@@ -223,8 +255,13 @@ extension AhoyCallKit: CXProviderDelegate {
                              body: ["uuid": action.callUUID.uuidString,
                                     "handle": action.handle.value])
     p.reportOutgoingCall(with: action.callUUID, startedConnectingAt: nil)
+    // Mark the outgoing call holdable so CallKit offers "Hold & Accept" when a
+    // second call arrives (call waiting). Incoming calls set this in their update.
+    let update = CXCallUpdate()
+    update.supportsHolding = true
+    p.reportCall(with: action.callUUID, updated: update)
     action.fulfill()
-    log("CXStartCallAction fulfilled")
+    log("CXStartCallAction fulfilled (supportsHolding=true)")
   }
 
   public func provider(_ p: CXProvider, perform action: CXAnswerCallAction) {
@@ -232,6 +269,8 @@ extension AhoyCallKit: CXProviderDelegate {
     configureAudioSession()
     eventDelegate?.sendEvent("onAnswerCall", body: ["uuid": action.callUUID.uuidString])
     action.fulfill() // media starts in didActivate
+    // No explicit hold of the other call: CallKit holds it automatically when a
+    // second call becomes active (and emits its own CXSetHeldCallAction).
     log("CXAnswerCallAction fulfilled (await didActivate)")
   }
 
@@ -240,6 +279,8 @@ extension AhoyCallKit: CXProviderDelegate {
     eventDelegate?.sendEvent("onEndCall", body: ["uuid": action.callUUID.uuidString])
     action.fulfill()
     log("CXEndCallAction fulfilled")
+    // No explicit resume: CallKit auto-resumes the held call when the active one
+    // ends (it fires its own CXSetHeldCallAction onHold=false).
   }
 
   public func provider(_ p: CXProvider, perform action: CXSetMutedCallAction) {

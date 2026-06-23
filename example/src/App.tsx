@@ -73,10 +73,12 @@ export default function App() {
 
   const startOutgoing = () => {
     const uuid = uuidv4();
-    lastCall.current = uuid;
     append(`call startCall uuid=${uuid}`);
     Ahoy.startCall({ uuid, handle: '+15551234567', hasVideo: false })
-      .then(() => append('startCall resolved'))
+      .then(() => {
+        lastCall.current = uuid; // only track calls the native side accepted
+        append('startCall resolved');
+      })
       .catch((e) => append(`startCall rejected: ${e}`));
   };
 
@@ -89,14 +91,16 @@ export default function App() {
 
   const simulateIncoming = () => {
     const uuid = uuidv4();
-    lastCall.current = uuid;
     append(`call displayIncomingCall uuid=${uuid}`);
     Ahoy.displayIncomingCall({
       uuid,
       handle: '+15557654321',
       localizedCallerName: 'Ada Lovelace',
     })
-      .then(() => append('displayIncomingCall resolved'))
+      .then(() => {
+        lastCall.current = uuid;
+        append('displayIncomingCall resolved');
+      })
       .catch((e) => append(`displayIncomingCall rejected: ${e}`));
   };
 
