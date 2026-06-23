@@ -12,12 +12,18 @@ class AhoyConnection(private val appContext: Context) : Connection() {
 
   private fun uuid(): String = AhoyCallRegistry.idOf(this) ?: ""
 
+  // Best label for the notification title: caller name, else the handle/number.
+  fun displayLabel(): String =
+    callerDisplayName?.toString()?.takeIf { it.isNotEmpty() }
+      ?: address?.schemeSpecificPart?.takeIf { it.isNotEmpty() }
+      ?: "Call"
+
   // Telecom asks us (self-managed) to post our own incoming UI.
   override fun onShowIncomingCallUi() {
     val id = uuid()
-    AhoyLog.d("onShowIncomingCallUi uuid=$id -> post CallStyle + start phoneCall FGS")
+    AhoyLog.d("onShowIncomingCallUi uuid=$id -> start phoneCall FGS (incoming notification)")
     AhoyEventBridge.incoming(id, address?.schemeSpecificPart ?: "")
-    AhoyIncomingUi.postIncomingCall(appContext, id, callerDisplayName)
+    // The FGS notification IS the incoming CallStyle while this call is ringing.
     AhoyCallForegroundService.start(appContext)
   }
 
@@ -25,8 +31,8 @@ class AhoyConnection(private val appContext: Context) : Connection() {
     AhoyLog.d("onAnswer uuid=${uuid()} -> setActive")
     AhoyEventBridge.answer(uuid())
     setActive()
-    AhoyIncomingUi.cancelIncoming(appContext)
-    AhoyCallForegroundService.start(appContext)
+    AhoyCallRegistry.holdAllExcept(uuid()) // call waiting: hold the call we were on
+    AhoyCallForegroundService.start(appContext) // refresh notification: now ongoing
   }
 
   override fun onAnswer(videoState: Int) = onAnswer()
@@ -71,8 +77,33 @@ class AhoyConnection(private val appContext: Context) : Connection() {
   }
 
   override fun onUnhold() {
+    AhoyLog.d("onUnhold uuid=${uuid()} -> setActive")
     AhoyEventBridge.toggleHold(uuid(), false)
     setActive()
+    AhoyCallRegistry.clearAutoHeld(uuid()) // user resumed it; no longer auto-held
+    AhoyCallRegistry.holdAllExcept(uuid()) // resuming this call holds the other
+  }
+
+  // Auto-hold this call when another takes focus (call waiting). Only acts on a
+  // call that is actually active/dialing; ringing/held calls are left alone.
+  // Returns true if it actually held (so the registry can track it for resume).
+  fun holdForCallWaiting(): Boolean {
+    if (state == STATE_ACTIVE || state == STATE_DIALING) {
+      setOnHold()
+      AhoyEventBridge.toggleHold(uuid(), true)
+      AhoyLog.d("auto-hold uuid=${uuid()} for call waiting")
+      return true
+    }
+    return false
+  }
+
+  // Auto-resume when the other (active) call ends.
+  fun resumeFromHold() {
+    if (state == STATE_HOLDING) {
+      setActive()
+      AhoyEventBridge.toggleHold(uuid(), false)
+      AhoyLog.d("auto-resume uuid=${uuid()} after other call ended")
+    }
   }
 
   // Deprecated in API 34 (superseded by onCallEndpointChanged/onMuteStateChanged)
@@ -87,13 +118,14 @@ class AhoyConnection(private val appContext: Context) : Connection() {
   // foreground service and clear notifications so Telecom releases audio focus.
   private fun cleanup(id: String) {
     AhoyCallRegistry.remove(id)
-    AhoyIncomingUi.cancelIncoming(appContext)
     val remaining = AhoyCallRegistry.uuids()
     if (remaining.isEmpty()) {
       AhoyLog.d("cleanup uuid=$id -> registry empty, stopping FGS")
-      AhoyCallForegroundService.stop(appContext)
+      AhoyCallForegroundService.stop(appContext) // onDestroy removes the notification
     } else {
       AhoyLog.d("cleanup uuid=$id -> ${remaining.size} call(s) still active: $remaining (FGS stays)")
+      AhoyCallRegistry.resumeOneHeld() // bring the held call back to active
+      AhoyCallForegroundService.start(appContext) // refresh notification for the remaining call
     }
   }
 }

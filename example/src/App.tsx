@@ -19,49 +19,31 @@ function uuidv4(): string {
   });
 }
 
-// CallKit upper-cases UUIDs, so normalize everywhere we compare/track.
-const norm = (uuid: string) => uuid.toLowerCase();
-
+// Thin test harness: every button calls ONE native API and the screen logs the
+// events the native module emits. No call-state logic lives here — the native
+// module owns the lifecycle (call waiting, hold/resume, the single-outgoing
+// guard, notifications). `lastCall` is just the uuid the per-call buttons target.
 export default function App() {
   const [log, setLog] = useState<string[]>([]);
-  const [active, setActive] = useState<string[]>([]);
-  // All calls we believe are live, keyed by normalized uuid.
-  const activeCalls = useRef<Set<string>>(new Set());
+  const lastCall = useRef<string | null>(null);
 
-  // Mirror to the on-screen log AND the Metro console ([Ahoy:JS] prefix) so the
-  // JS half can be pasted alongside the native [Ahoy] device logs.
   const append = (line: string) => {
     console.log(`[Ahoy:JS] ${line}`);
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev]);
   };
 
-  const syncActive = () => setActive([...activeCalls.current]);
-  const track = (uuid: string) => {
-    activeCalls.current.add(norm(uuid));
-    syncActive();
-  };
-  const untrack = (uuid: string) => {
-    activeCalls.current.delete(norm(uuid));
-    syncActive();
-  };
-
   useEffect(() => {
-    // Android 13+: notifications need runtime permission to be visible.
     if (Platform.OS === 'android' && Platform.Version >= 33) {
       PermissionsAndroid.request(
         'android.permission.POST_NOTIFICATIONS' as Parameters<
           typeof PermissionsAndroid.request
         >[0]
-      )
-        .then((r) => append(`POST_NOTIFICATIONS: ${r}`))
-        .catch(() => {});
+      ).catch(() => {});
     }
-    // Register the call account (Android: self-managed PhoneAccount; iOS: no-op).
     Ahoy.setup({ label: 'Ahoy Example' })
       .then(() => append('setup ok'))
       .catch((e) => append(`setup failed: ${e}`));
 
-    append('subscribing to events');
     const subs = [
       Ahoy.onStartCallAction(({ uuid }) =>
         append(`event onStartCallAction uuid=${uuid}`)
@@ -69,11 +51,7 @@ export default function App() {
       Ahoy.onAnswerCall(({ uuid }) =>
         append(`event onAnswerCall uuid=${uuid}`)
       ),
-      // A call genuinely ended (native CXEndCallAction path): drop it.
-      Ahoy.onEndCall(({ uuid }) => {
-        append(`event onEndCall uuid=${uuid}`);
-        untrack(uuid);
-      }),
+      Ahoy.onEndCall(({ uuid }) => append(`event onEndCall uuid=${uuid}`)),
       Ahoy.onToggleMute(({ uuid, muted }) =>
         append(`event onToggleMute uuid=${uuid} muted=${muted}`)
       ),
@@ -86,45 +64,59 @@ export default function App() {
       Ahoy.onDidDeactivateAudioSession(() =>
         append('event onDidDeactivateAudioSession')
       ),
-      Ahoy.onProviderReset(() => {
-        append('event onProviderReset');
-        activeCalls.current.clear();
-        syncActive();
-      }),
+      Ahoy.onProviderReset(() => append('event onProviderReset')),
     ];
     return () => subs.forEach((s) => s.remove());
-    // Subscribe once on mount; helpers close over stable refs/setters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Each handler is a single native call.
 
   const startOutgoing = () => {
     const uuid = uuidv4();
-    append(`call startCall uuid=${uuid} handle=+15551234567`);
-    Ahoy.startCall({ uuid, handle: '+15551234567', hasVideo: false });
-    track(uuid);
-    // Simulate signaling reporting the remote answered after a moment.
-    setTimeout(() => {
-      if (activeCalls.current.has(norm(uuid))) {
-        append(`call reportConnectedOutgoingCall uuid=${uuid}`);
-        Ahoy.reportConnectedOutgoingCall(uuid);
-      }
-    }, 2000);
+    lastCall.current = uuid;
+    append(`call startCall uuid=${uuid}`);
+    Ahoy.startCall({ uuid, handle: '+15551234567', hasVideo: false })
+      .then(() => append('startCall resolved'))
+      .catch((e) => append(`startCall rejected: ${e}`));
+  };
+
+  const markConnected = () => {
+    const uuid = lastCall.current;
+    if (!uuid) return;
+    append(`call reportConnectedOutgoingCall uuid=${uuid}`);
+    Ahoy.reportConnectedOutgoingCall(uuid);
   };
 
   const simulateIncoming = () => {
     const uuid = uuidv4();
-    append(`call displayIncomingCall uuid=${uuid} caller=Ada Lovelace`);
+    lastCall.current = uuid;
+    append(`call displayIncomingCall uuid=${uuid}`);
     Ahoy.displayIncomingCall({
       uuid,
       handle: '+15557654321',
       localizedCallerName: 'Ada Lovelace',
-    });
-    track(uuid);
+    })
+      .then(() => append('displayIncomingCall resolved'))
+      .catch((e) => append(`displayIncomingCall rejected: ${e}`));
   };
 
-  // End ONE specific call (in-app hang-up / decline an incoming): CXEndCallAction
-  // transaction. Native emits onEndCall, which untracks it. Other calls survive.
-  const endOne = (uuid: string) => {
+  const answerLast = () => {
+    const uuid = lastCall.current;
+    if (!uuid) return;
+    append(`call answerIncomingCall uuid=${uuid}`);
+    Ahoy.answerIncomingCall(uuid);
+  };
+
+  const holdLast = (onHold: boolean) => {
+    const uuid = lastCall.current;
+    if (!uuid) return;
+    append(`call setOnHold uuid=${uuid} hold=${onHold}`);
+    Ahoy.setOnHold(uuid, onHold);
+  };
+
+  const endLast = () => {
+    const uuid = lastCall.current;
+    if (!uuid) return;
     append(`call endCall uuid=${uuid}`);
     Ahoy.endCall(uuid);
   };
@@ -136,23 +128,17 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Ahoy — CallKit demo (T2)</Text>
+      <Text style={styles.title}>Ahoy — native test harness</Text>
       <View style={styles.row}>
         <Button label="Start outgoing" onPress={startOutgoing} />
+        <Button label="Mark connected" onPress={markConnected} />
         <Button label="Simulate incoming" onPress={simulateIncoming} />
+        <Button label="Answer last" onPress={answerLast} />
+        <Button label="Hold last" onPress={() => holdLast(true)} />
+        <Button label="Resume last" onPress={() => holdLast(false)} />
+        <Button label="End last" onPress={endLast} />
         <Button label="End all" onPress={endAll} />
       </View>
-      <Text style={styles.subtitle}>Active calls ({active.length})</Text>
-      {active.length === 0 ? (
-        <Text style={styles.muted}>none</Text>
-      ) : (
-        active.map((uuid) => (
-          <View key={uuid} style={styles.callRow}>
-            <Text style={styles.callId}>{uuid.slice(0, 8)}…</Text>
-            <Button label="End / Decline" onPress={() => endOne(uuid)} />
-          </View>
-        ))
-      )}
       <Text style={styles.subtitle}>Events</Text>
       <ScrollView style={styles.log}>
         {log.map((line, i) => (
@@ -177,15 +163,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', padding: 16, paddingTop: 64 },
   title: { fontSize: 18, fontWeight: '600', marginBottom: 12 },
   subtitle: { fontSize: 14, fontWeight: '600', marginTop: 16, marginBottom: 4 },
-  muted: { fontSize: 13, color: '#999' },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  callRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 4,
-  },
-  callId: { fontFamily: 'Menlo', fontSize: 13, flex: 1 },
   button: {
     backgroundColor: '#0a7',
     paddingHorizontal: 12,

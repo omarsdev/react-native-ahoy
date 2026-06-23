@@ -18,7 +18,9 @@ class AhoyConnectionService : ConnectionService() {
     connection.setAddress(request?.address, TelecomManager.PRESENTATION_ALLOWED)
     val uuid = uuidFrom(request, TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS)
     AhoyCallRegistry.register(uuid, connection)
+    AhoyCallRegistry.endOutgoingAttempt() // placeCall resolved into a connection
     connection.setDialing()
+    AhoyCallRegistry.holdAllExcept(uuid) // placing a new call holds whatever we were on
     if (uuid.isEmpty()) AhoyLog.d("WARN onCreateOutgoingConnection got empty uuid (extras=${request?.extras})")
     // Show the ongoing-call notification for the whole outgoing call (dialing →
     // active), not just once it connects. Foreground-start is allowed here because
@@ -34,6 +36,7 @@ class AhoyConnectionService : ConnectionService() {
     request: ConnectionRequest?
   ) {
     AhoyLog.d("onCreateOutgoingConnectionFailed (check EXTRA_PHONE_ACCOUNT_HANDLE / isOutgoingCallPermitted)")
+    AhoyCallRegistry.endOutgoingAttempt()
     AhoyEventBridge.end(uuidFrom(request, TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS))
   }
 

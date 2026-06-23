@@ -13,25 +13,32 @@ class AhoyCallActionReceiver : BroadcastReceiver() {
     val uuid = intent.getStringExtra(EXTRA_UUID)
     AhoyLog.d("notification action=${intent.action} uuid=$uuid")
 
-    // Prefer the exact call; fall back to any live call so the ongoing-call
-    // notification's hang-up still works if its baked-in uuid went stale.
-    val connection = uuid?.let { AhoyCallRegistry.byId(it) }
-      ?: AhoyCallRegistry.uuids().firstNotNullOfOrNull { AhoyCallRegistry.byId(it) }
-
-    if (connection == null) {
-      AhoyLog.d("notification action: no live call to act on")
-      return
-    }
-
     when (intent.action) {
-      ACTION_ANSWER -> connection.onAnswer()
-      ACTION_DECLINE -> connection.onReject()
+      // Per-call buttons target their EXACT call only. A stale button (its call
+      // already ended) must do nothing — never fall back to another call, or it
+      // would hang up an unrelated active call.
+      ACTION_ANSWER -> withCall(uuid) { it.onAnswer() }
+      ACTION_DECLINE -> withCall(uuid) { it.onReject() }
+      // Ongoing-call notification hang-up: no baked-in uuid — resolve the current
+      // active call dynamically so it can't go stale.
+      ACTION_HANGUP -> {
+        val active = AhoyCallRegistry.activeConnection()
+        if (active == null) AhoyLog.d("hangup: no active call")
+        else active.onDisconnect()
+      }
     }
+  }
+
+  private inline fun withCall(uuid: String?, action: (AhoyConnection) -> Unit) {
+    val connection = uuid?.let { AhoyCallRegistry.byId(it) }
+    if (connection == null) AhoyLog.d("action ignored: no live call $uuid (stale notification)")
+    else action(connection)
   }
 
   companion object {
     const val ACTION_ANSWER = "dev.omars.ahoy.ANSWER"
     const val ACTION_DECLINE = "dev.omars.ahoy.DECLINE"
+    const val ACTION_HANGUP = "dev.omars.ahoy.HANGUP"
     const val EXTRA_UUID = "dev.omars.ahoy.ACTION_UUID"
   }
 }

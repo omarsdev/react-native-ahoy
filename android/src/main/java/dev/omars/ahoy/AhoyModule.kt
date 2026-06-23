@@ -62,9 +62,16 @@ class AhoyModule(reactContext: ReactApplicationContext) :
   override fun startCall(opts: ReadableMap, promise: Promise) {
     val uuid = opts.getString("uuid") ?: return promise.reject("ahoy_bad_args", "missing uuid")
     val handle = opts.getString("handle") ?: ""
+    // Native protector: one outgoing call at a time. Refuse a new placeCall while
+    // another call exists or one is already being placed (rapid taps / stacking).
+    if (!AhoyCallRegistry.tryBeginOutgoing()) {
+      AhoyLog.d("startCall BLOCKED: already in a call / placing uuid=$uuid")
+      return promise.reject("ahoy_busy", "already in a call")
+    }
     try {
       val accountHandle = phoneAccountHandle()
       if (!telecom.isOutgoingCallPermitted(accountHandle)) {
+        AhoyCallRegistry.endOutgoingAttempt()
         AhoyLog.d("startCall NOT permitted (another call active?) uuid=$uuid")
         return promise.reject("ahoy_not_permitted", "outgoing call not permitted")
       }
@@ -77,9 +84,10 @@ class AhoyModule(reactContext: ReactApplicationContext) :
           Bundle().apply { putString(AhoyConnectionService.EXTRA_UUID, uuid) }
         )
       }
-      telecom.placeCall(uri, extras) // -> onCreateOutgoingConnection
+      telecom.placeCall(uri, extras) // -> onCreateOutgoingConnection (clears the placing flag)
       promise.resolve(null)
     } catch (e: SecurityException) {
+      AhoyCallRegistry.endOutgoingAttempt()
       AhoyLog.d("startCall SecurityException (MANAGE_OWN_CALLS missing?): ${e.message}")
       promise.reject("ahoy_security", e)
     }

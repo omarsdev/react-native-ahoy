@@ -18,14 +18,20 @@ class AhoyCallForegroundService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    val notification = AhoyIncomingUi.buildOngoingCallNotification(this)
+    // Reflects the current call state (incoming CallStyle while ringing, else ongoing).
+    val notification = AhoyIncomingUi.buildCallNotification(this)
     val type =
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) // API 34
         ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
       else 0
-    ServiceCompat.startForeground(this, AhoyIncomingUi.ONGOING_NOTIFICATION_ID, notification, type)
+    ServiceCompat.startForeground(this, AhoyIncomingUi.CALL_NOTIFICATION_ID, notification, type)
     AhoyLog.d("phoneCall foreground service started (type=$type)")
     return START_NOT_STICKY
+  }
+
+  override fun onDestroy() {
+    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    super.onDestroy()
   }
 
   companion object {
