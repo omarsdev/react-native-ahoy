@@ -24,6 +24,9 @@ class AhoyMessagingService : FirebaseMessagingService() {
     }
     val data = message.data
     AhoyLog.d("FCM data message received: $data")
+    // Warm the React runtime FIRST so it boots in parallel with the native call
+    // setup below — the branded RN call screen then paints sooner on a cold start.
+    AhoyReactWarmup.start(this)
     // Start the phoneCall FGS PROMPTLY — the background-start exemption window is brief.
     AhoyCallForegroundService.startIncomingFromPush(this, data)
   }

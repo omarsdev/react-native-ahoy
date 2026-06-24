@@ -34,6 +34,9 @@ class AhoyCallForegroundService : Service() {
     val handle = intent.getStringExtra(EXTRA_HANDLE) ?: ""
     val caller = intent.getStringExtra(EXTRA_CALLER) ?: ""
     AhoyLog.d("FGS from push uuid=$uuid handle=$handle caller=$caller")
+    // Warm the React runtime ASAP (idempotent) so the branded RN call screen
+    // paints sooner — covers consumers wiring their own FCM service.
+    AhoyReactWarmup.start(this)
     // Start foreground first with the incoming notification built from the push.
     startForegroundWith(AhoyIncomingUi.buildIncomingFromPush(this, uuid, caller))
     // Register the self-managed account (may be the first run after a kill) + hand to Telecom.
