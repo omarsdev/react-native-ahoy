@@ -60,11 +60,23 @@ The example pairs ahoy's lifecycle with react-native-webrtc media:
 - ahoy events drive media: `onAnswerCall → pc.createAnswer()`, `onEndCall →
   pc.close()` + send `bye`.
 
-> ⚠️ **Status:** the reference backend (steps 1–2) is implemented and smoke-tested.
-> The example app's WebRTC media wiring (step 3) + the two-device audio verification
-> are the remaining hardware-gated work — they need two physical devices and a
-> reachable coturn. See the T7 runbook's "Testing" section for the exact device
-> matrix.
+The reference glue lives in `example/src/`:
+
+- `callService.ts` — `RTCPeerConnection` + mic, offer/answer/ICE helpers, mute/close.
+- `signalingClient.ts` — WebSocket client (register + offer/answer/ice/bye + call).
+- `callBindings.ts` — `wireAhoyToWebRTC({ selfId, signalingUrl, uuid })`: maps ahoy
+  events (`onAnswerCall`/`onEndCall`/`onToggleMute`) ↔ WebRTC + signaling, and
+  exposes `placeCall(to, handle, name)`.
+
+To activate it in the example, call `wireAhoyToWebRTC(...)` at app start (it's not
+imported by the thin test-harness `App.tsx` by default). Set `turn:` in
+`callService.ts` to your coturn host.
+
+> ⚠️ **Status:** the reference backend (steps 1–2) and this glue (step 3) are
+> implemented and **typecheck/lint clean**, but the **end-to-end audio call is NOT
+> yet verified** — it needs two physical devices + a reachable coturn (and a native
+> rebuild that compiles `react-native-webrtc` into the example). That verification
+> is the remaining hardware-gated work; see the T7 runbook's "Testing" section.
 
 ## 4. Place a call
 
