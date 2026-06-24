@@ -42,7 +42,9 @@ class AhoyConnection(private val appContext: Context) : Connection() {
     AhoyLog.d("onAnswer uuid=${uuid()} -> setActive")
     AhoyEventBridge.answer(uuid())
     becomeActive()
-    IncomingCallActivity.finishFor(uuid()) // close the lock-screen ring UI
+    // WhatsApp-style: dismiss the keyguard and KEEP the activity so the same RN
+    // screen shows the in-call view (do NOT finish here).
+    IncomingCallActivity.onAnswered(uuid())
     AhoyCallRegistry.holdAllExcept(uuid()) // call waiting: hold the call we were on
     AhoyCallForegroundService.start(appContext) // refresh notification: now ongoing
   }

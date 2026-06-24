@@ -62,12 +62,11 @@ class IncomingCallActivity : ReactActivity() {
         }
     }
 
-  private fun dismissKeyguardAndFinish() {
+  private fun dismissKeyguard() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
       if (km?.isKeyguardLocked == true) km.requestDismissKeyguard(this, null)
     }
-    finish()
   }
 
   companion object {
@@ -88,12 +87,22 @@ class IncomingCallActivity : ReactActivity() {
       if (live[uuid]?.get() === a) live.remove(uuid)
     }
 
-    // Close the lock-screen call UI for this uuid — answered/declined/ended from
-    // ANY source (RN buttons, notification action, or a remote cancel).
+    // Call ANSWERED (WhatsApp-style): go INTO the call. Dismiss the keyguard (on a
+    // no-password lock this is instant) but KEEP the activity, so the same React
+    // component re-renders as the in-call screen. Does not finish.
+    @Synchronized
+    fun onAnswered(uuid: String) {
+      val a = live[uuid]?.get() ?: return
+      a.runOnUiThread { a.dismissKeyguard() }
+    }
+
+    // Call DECLINED / ended / cancelled: close the lock-screen UI. Never dismisses
+    // the keyguard — rejecting a call must not unlock the phone; the screen returns
+    // to the lock screen. Fired from RN buttons, the notification, or a remote end.
     @Synchronized
     fun finishFor(uuid: String) {
       val a = live.remove(uuid)?.get() ?: return
-      a.runOnUiThread { a.dismissKeyguardAndFinish() }
+      a.runOnUiThread { a.finish() }
     }
   }
 }
