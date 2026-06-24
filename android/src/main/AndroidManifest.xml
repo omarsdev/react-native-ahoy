@@ -28,6 +28,19 @@
       android:foregroundServiceType="phoneCall"
       android:exported="false" />
 
+    <!-- T5: full-screen-intent target. Launched by the CallStyle notification's
+         FSI on a locked/screen-off device; showWhenLocked + turnScreenOn make it
+         ring over the keyguard and wake the screen. -->
+    <activity
+      android:name="dev.omars.ahoy.IncomingCallActivity"
+      android:exported="false"
+      android:showWhenLocked="true"
+      android:turnScreenOn="true"
+      android:excludeFromRecents="true"
+      android:launchMode="singleInstance"
+      android:taskAffinity=""
+      android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
     <!-- Backs the Answer / Decline buttons on the incoming-call notification. -->
     <receiver
       android:name="dev.omars.ahoy.AhoyCallActionReceiver"

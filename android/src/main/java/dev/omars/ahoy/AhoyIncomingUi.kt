@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
@@ -17,7 +19,9 @@ import androidx.core.app.Person
 object AhoyIncomingUi {
 
   const val CALL_NOTIFICATION_ID = 0xA401
-  private const val CHANNEL_ID = "ahoy_calls"
+  // v2: channel importance/sound are immutable after creation, so a new id is the
+  // only way to upgrade the silent T4 channel to a ringing, lock-screen one.
+  private const val CHANNEL_ID = "ahoy_calls_v2"
 
   private fun ensureChannel(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -26,12 +30,31 @@ object AhoyIncomingUi {
     val channel = NotificationChannel(
       CHANNEL_ID,
       "Calls",
-      NotificationManager.IMPORTANCE_HIGH
+      NotificationManager.IMPORTANCE_HIGH // mandatory: lower never rings / launches an FSI
     ).apply {
       description = "Incoming and ongoing calls"
       setShowBadge(false)
+      // Ring + vibrate + show full content on the lock screen.
+      lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+      enableVibration(true)
+      vibrationPattern = longArrayOf(0, 1000, 1000)
+      val ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+      val audio = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
+      setSound(ringtone, audio)
     }
     mgr.createNotificationChannel(channel)
+  }
+
+  // T5: on Android 14+ USE_FULL_SCREEN_INTENT is auto-granted only to calling/alarm
+  // apps; everyone else defaults to false and must deep-link to Settings. Below 34
+  // the manifest permission is always in effect.
+  fun canUseFullScreenIntent(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 34) return true
+    val mgr = context.getSystemService(NotificationManager::class.java) ?: return false
+    return mgr.canUseFullScreenIntent()
   }
 
   // Build the notification for whatever the current call state is.
@@ -63,7 +86,15 @@ object AhoyIncomingUi {
       .setPriority(NotificationCompat.PRIORITY_MAX)
       .setOngoing(true)
       .setAutoCancel(false)
-      .setFullScreenIntent(fullScreenIntent(context), true)
+      // FSI wakes the screen over the keyguard via IncomingCallActivity. When the
+      // permission is revoked on API 34+ this silently degrades to a heads-up — so
+      // tell JS (it can prompt + deep-link) while still posting the notification.
+      .setFullScreenIntent(fullScreenIntent(context, uuid, name), true)
+
+    if (!canUseFullScreenIntent(context)) {
+      AhoyLog.d("full-screen intent NOT granted; degrading to heads-up uuid=$uuid")
+      AhoyEventBridge.fullScreenIntentNotGranted()
+    }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       builder.setStyle(NotificationCompat.CallStyle.forIncomingCall(person, decline, answer))
@@ -111,13 +142,19 @@ object AhoyIncomingUi {
     )
   }
 
-  private fun fullScreenIntent(context: Context): PendingIntent? {
-    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
-    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+  // Targets our own IncomingCallActivity (showWhenLocked/turnScreenOn) rather than
+  // the app launch intent, so the full-screen ring shows OVER the keyguard and
+  // wakes the screen instead of launching behind the lock screen.
+  private fun fullScreenIntent(context: Context, uuid: String, name: String): PendingIntent {
+    val intent = Intent(context, IncomingCallActivity::class.java).apply {
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+      putExtra(IncomingCallActivity.EXTRA_UUID, uuid)
+      putExtra(IncomingCallActivity.EXTRA_CALLER, name)
+    }
     return PendingIntent.getActivity(
       context,
-      0,
-      launch,
+      uuid.hashCode(),
+      intent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
   }

@@ -41,6 +41,12 @@ export interface Spec extends TurboModule {
   // iOS VoIP (PushKit) token to register with your backend; null until issued.
   getVoipPushToken(): Promise<string | null>; // iOS
 
+  // ---- T5: locked-screen full-screen-intent (Android) ----
+  // Android 14+ auto-grants USE_FULL_SCREEN_INTENT only to calling/alarm apps;
+  // others must check and deep-link to the per-app Settings toggle. iOS: always true.
+  canUseFullScreenIntent(): Promise<boolean>; // Android
+  openFullScreenIntentSettings(): void; // Android (no-op on iOS)
+
   // ---- typed events: property MUST be readonly and start with "on" ----
   // Codegen generates emitOnAnswerCall / emitOnEndCall / emitOnDisplayIncomingCall.
   readonly onAnswerCall: CodegenTypes.EventEmitter<{ uuid: string }>;
@@ -68,6 +74,8 @@ export interface Spec extends TurboModule {
   readonly onDidDeactivateAudioSession: CodegenTypes.EventEmitter<void>;
   // T4: iOS VoIP (PushKit) token updated — send it to your push backend.
   readonly onVoipPushToken: CodegenTypes.EventEmitter<{ token: string }>;
+  // T5 (Android): full-screen-intent permission is not granted — prompt the user.
+  readonly onFullScreenIntentNotGranted: CodegenTypes.EventEmitter<void>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('Ahoy');

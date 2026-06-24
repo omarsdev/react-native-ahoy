@@ -167,6 +167,21 @@
   resolve(token ?: (id)kCFNull);
 }
 
+#pragma mark - T5: full-screen-intent (Android-only; iOS rings via CallKit/PushKit)
+
+// iOS has no full-screen-intent permission — CallKit owns the lock-screen ring,
+// so these are always-allowed / no-op to keep the cross-platform JS API uniform.
+- (void)canUseFullScreenIntent:(RCTPromiseResolveBlock)resolve
+                        reject:(RCTPromiseRejectBlock)reject
+{
+  resolve(@YES);
+}
+
+- (void)openFullScreenIntentSettings
+{
+  // no-op on iOS
+}
+
 #pragma mark - AhoyEventDelegate (Swift core -> JS)
 
 - (void)sendEvent:(NSString *)name body:(NSDictionary *)body

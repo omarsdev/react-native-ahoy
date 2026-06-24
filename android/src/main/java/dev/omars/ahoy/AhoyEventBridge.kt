@@ -32,4 +32,7 @@ object AhoyEventBridge {
   fun toggleHold(uuid: String, onHold: Boolean) = module?.sendToggleHold(uuid, onHold)
   fun toggleMute(uuid: String, muted: Boolean) = module?.sendToggleMute(uuid, muted)
   fun voipPushToken(token: String) = module?.sendVoipPushToken(token)
+
+  // T5: full-screen-intent permission missing on Android 14+ — let JS prompt the user.
+  fun fullScreenIntentNotGranted() = module?.sendFullScreenIntentNotGranted()
 }

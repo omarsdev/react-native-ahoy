@@ -223,6 +223,28 @@ class AhoyModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  // ---- T5: full-screen-intent permission (Android 14+) ----
+
+  // Android 14+ auto-grants USE_FULL_SCREEN_INTENT only to calling/alarm apps. A
+  // self-managed calling app usually qualifies, but the grant is Play-reviewed
+  // per consuming app, so always check and let JS prompt + deep-link if missing.
+  override fun canUseFullScreenIntent(promise: Promise) {
+    promise.resolve(AhoyIncomingUi.canUseFullScreenIntent(reactApplicationContext))
+  }
+
+  override fun openFullScreenIntentSettings() {
+    if (android.os.Build.VERSION.SDK_INT < 34) return
+    val intent = android.content.Intent(
+      android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+      Uri.fromParts("package", reactApplicationContext.packageName, null)
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+      reactApplicationContext.startActivity(intent)
+    } catch (e: Exception) {
+      AhoyLog.d("openFullScreenIntentSettings failed: ${e.message}")
+    }
+  }
+
   // ---- event emitters (called by AhoyEventBridge from Telecom callbacks) ----
 
   fun sendAnswerCall(uuid: String) =
@@ -258,6 +280,8 @@ class AhoyModule(reactContext: ReactApplicationContext) :
 
   fun sendVoipPushToken(token: String) =
     emitOnVoipPushToken(Arguments.createMap().apply { putString("token", token) })
+
+  fun sendFullScreenIntentNotGranted() = emitOnFullScreenIntentNotGranted()
 
   companion object {
     const val NAME = NativeAhoySpec.NAME
