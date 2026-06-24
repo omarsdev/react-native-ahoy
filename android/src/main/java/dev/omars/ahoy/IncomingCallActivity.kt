@@ -1,5 +1,7 @@
 package dev.omars.ahoy
 
+import android.app.KeyguardManager
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -60,6 +62,13 @@ class IncomingCallActivity : ReactActivity() {
         }
     }
 
+  private fun dismissKeyguard() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+      if (km?.isKeyguardLocked == true) km.requestDismissKeyguard(this, null)
+    }
+  }
+
   companion object {
     const val COMPONENT_NAME = "AhoyIncomingCall"
     const val EXTRA_UUID = "ahoy_uuid"
@@ -78,12 +87,18 @@ class IncomingCallActivity : ReactActivity() {
       if (live[uuid]?.get() === a) live.remove(uuid)
     }
 
-    // Call ENDED — declined / hung up / cancelled. Closes the call screen. We NEVER
-    // dismiss the keyguard for a call: on a secure lock requestDismissKeyguard pops
-    // the unlock prompt, which is not what answering a call should do. The call
-    // screen shows OVER the keyguard (showWhenLocked) and stays interactive; when it
-    // finishes, a locked phone returns to the lock screen and an unlocked phone to
-    // the app/home. Fired from RN buttons, the notification action, or a remote end.
+    // Call ANSWERED (WhatsApp-style): go INTO the call. Dismiss the keyguard (on a
+    // no-password lock this is instant) but KEEP the activity, so the same React
+    // component re-renders as the in-call screen. Does not finish.
+    @Synchronized
+    fun onAnswered(uuid: String) {
+      val a = live[uuid]?.get() ?: return
+      a.runOnUiThread { a.dismissKeyguard() }
+    }
+
+    // Call DECLINED / ended / cancelled: close the lock-screen UI. Never dismisses
+    // the keyguard — rejecting a call must not unlock the phone; the screen returns
+    // to the lock screen. Fired from RN buttons, the notification, or a remote end.
     @Synchronized
     fun finishFor(uuid: String) {
       val a = live.remove(uuid)?.get() ?: return

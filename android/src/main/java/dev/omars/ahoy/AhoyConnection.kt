@@ -42,9 +42,9 @@ class AhoyConnection(private val appContext: Context) : Connection() {
     AhoyLog.d("onAnswer uuid=${uuid()} -> setActive")
     AhoyEventBridge.answer(uuid())
     becomeActive()
-    // KEEP the call activity (don't finish): the same RN screen flips to the in-call
-    // view. We do NOT dismiss the keyguard — on a secure lock that pops the unlock
-    // prompt; instead the call screen stays OVER the lock and the app is not exposed.
+    // WhatsApp-style: dismiss the keyguard and KEEP the activity so the same RN
+    // screen shows the in-call view (do NOT finish here).
+    IncomingCallActivity.onAnswered(uuid())
     AhoyCallRegistry.holdAllExcept(uuid()) // call waiting: hold the call we were on
     AhoyCallForegroundService.start(appContext) // refresh notification: now ongoing
   }
