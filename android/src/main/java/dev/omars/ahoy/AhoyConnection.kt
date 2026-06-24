@@ -12,6 +12,17 @@ class AhoyConnection(private val appContext: Context) : Connection() {
 
   private fun uuid(): String = AhoyCallRegistry.idOf(this) ?: ""
 
+  // When the call first became active (answered / outgoing-connected). Drives the
+  // call-duration chronometer on the ongoing notification. 0 until connected;
+  // set once so resuming from hold keeps the total-call timer running.
+  var connectedAtMillis: Long = 0L
+    private set
+
+  private fun becomeActive() {
+    if (connectedAtMillis == 0L) connectedAtMillis = System.currentTimeMillis()
+    setActive()
+  }
+
   // Best label for the notification title: caller name, else the handle/number.
   fun displayLabel(): String =
     callerDisplayName?.toString()?.takeIf { it.isNotEmpty() }
@@ -30,7 +41,7 @@ class AhoyConnection(private val appContext: Context) : Connection() {
   override fun onAnswer() {
     AhoyLog.d("onAnswer uuid=${uuid()} -> setActive")
     AhoyEventBridge.answer(uuid())
-    setActive()
+    becomeActive()
     IncomingCallActivity.finishFor(uuid()) // close the lock-screen ring UI
     AhoyCallRegistry.holdAllExcept(uuid()) // call waiting: hold the call we were on
     AhoyCallForegroundService.start(appContext) // refresh notification: now ongoing
@@ -51,7 +62,7 @@ class AhoyConnection(private val appContext: Context) : Connection() {
 
   // JS-driven actions (called from AhoyModule).
   fun markActive() {
-    setActive()
+    becomeActive()
     AhoyCallForegroundService.start(appContext)
   }
 
@@ -80,7 +91,7 @@ class AhoyConnection(private val appContext: Context) : Connection() {
   override fun onUnhold() {
     AhoyLog.d("onUnhold uuid=${uuid()} -> setActive")
     AhoyEventBridge.toggleHold(uuid(), false)
-    setActive()
+    becomeActive()
     AhoyCallRegistry.clearAutoHeld(uuid()) // user resumed it; no longer auto-held
     AhoyCallRegistry.holdAllExcept(uuid()) // resuming this call holds the other
   }
@@ -101,7 +112,7 @@ class AhoyConnection(private val appContext: Context) : Connection() {
   // Auto-resume when the other (active) call ends.
   fun resumeFromHold() {
     if (state == STATE_HOLDING) {
-      setActive()
+      becomeActive()
       AhoyEventBridge.toggleHold(uuid(), false)
       AhoyLog.d("auto-resume uuid=${uuid()} after other call ended")
     }

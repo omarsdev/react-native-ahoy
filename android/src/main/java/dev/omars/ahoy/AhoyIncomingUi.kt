@@ -109,8 +109,9 @@ object AhoyIncomingUi {
   }
 
   private fun buildOngoing(context: Context): Notification {
+    val active = AhoyCallRegistry.activeConnection()
     // Title from the active call (caller name or number), not a generic label.
-    val name = AhoyCallRegistry.activeConnection()?.displayLabel() ?: "Ongoing call"
+    val name = active?.displayLabel() ?: "Ongoing call"
     val person = Person.Builder().setName(name).build()
     // No baked-in uuid: ACTION_HANGUP resolves the active call when tapped.
     val hangup = actionIntent(context, AhoyCallActionReceiver.ACTION_HANGUP, "")
@@ -120,6 +121,13 @@ object AhoyIncomingUi {
       .setCategory(NotificationCompat.CATEGORY_CALL)
       .setOngoing(true)
       .setContentTitle(name)
+
+    // Running call-duration timer: chronometer counts up from the connect time.
+    // CallStyle renders it as the elapsed call duration once both are set.
+    val connectedAt = active?.connectedAtMillis ?: 0L
+    if (connectedAt > 0L) {
+      builder.setWhen(connectedAt).setShowWhen(true).setUsesChronometer(true)
+    }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       builder.setStyle(NotificationCompat.CallStyle.forOngoingCall(person, hangup))
