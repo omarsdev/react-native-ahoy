@@ -45,7 +45,8 @@
       android:excludeFromRecents="true"
       android:launchMode="singleInstance"
       android:taskAffinity=""
-      android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode"
+      android:theme="@style/Theme.Ahoy.IncomingCall" />
 
     <!-- Backs the Answer / Decline buttons on the incoming-call notification. -->
     <receiver

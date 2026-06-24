@@ -1,33 +1,35 @@
 package dev.omars.ahoy
 
-import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
-import android.content.Intent
-import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import com.facebook.react.ReactActivity
+import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
+import com.facebook.react.defaults.DefaultReactActivityDelegate
+import java.lang.ref.WeakReference
 
-// T5: the full-screen-intent target. When a CallStyle notification's FSI fires on
-// a LOCKED / screen-off device, the system launches this activity full-screen.
-// showWhenLocked + turnScreenOn make it ring OVER the keyguard and wake the
-// screen. It's a self-contained NATIVE ringing UI (no ReactActivity dependency),
-// so the library works regardless of the consumer's JS entry point. Answer/Decline
-// route through the same AhoyCallActionReceiver as the notification buttons.
-class IncomingCallActivity : Activity() {
+// T6: the full-screen-intent target renders the CONSUMER'S React component
+// (registered from JS as "AhoyIncomingCall") instead of a hard-coded native
+// screen. It still wakes over the keyguard (showWhenLocked/turnScreenOn) on a
+// killed app with the screen off, and uses a dark window background so the
+// pre-JS frame is dark rather than a white flash while the JS bundle boots.
+//
+// The native ring is independent and instant: the CallStyle notification +
+// ringtone (via the phoneCall FGS) fire the moment the push arrives, regardless
+// of how long React takes to render. This activity just paints the branded UI.
+class IncomingCallActivity : ReactActivity() {
 
   private var uuid: String = ""
 
+  override fun getMainComponentName(): String = COMPONENT_NAME
+
   override fun onCreate(savedInstanceState: Bundle?) {
-    // Set BOTH, BEFORE super/setContentView, or the FSI launches behind the
-    // keyguard or the screen never wakes.
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) { // API 27+
+    // Set BOTH before super, or the activity launches behind the keyguard /
+    // the screen never wakes.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
       setTurnScreenOn(true)
     } else {
@@ -38,105 +40,60 @@ class IncomingCallActivity : Activity() {
           or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
       )
     }
+    uuid = intent?.getStringExtra(EXTRA_UUID) ?: ""
     super.onCreate(savedInstanceState)
-    bind(intent)
+    register(uuid, this)
+    AhoyLog.d("IncomingCallActivity (RN '$COMPONENT_NAME') shown uuid=$uuid")
   }
 
-  override fun onNewIntent(intent: Intent?) {
-    super.onNewIntent(intent)
-    intent?.let {
-      setIntent(it)
-      bind(it)
-    }
+  override fun onDestroy() {
+    unregister(uuid, this)
+    super.onDestroy()
   }
 
-  override fun onResume() {
-    super.onResume()
-    // If the call was already answered/declined elsewhere (notification, remote
-    // cancel) before the user reached this screen, don't show a dead UI.
-    if (uuid.isNotEmpty() && AhoyCallRegistry.byId(uuid) == null) {
-      AhoyLog.d("IncomingCallActivity: call $uuid no longer live, finishing")
-      finish()
-    }
-  }
-
-  private fun bind(intent: Intent) {
-    uuid = intent.getStringExtra(EXTRA_UUID) ?: ""
-    val caller = intent.getStringExtra(EXTRA_CALLER)?.ifEmpty { "Incoming call" } ?: "Incoming call"
-    AhoyLog.d("IncomingCallActivity shown uuid=$uuid caller=$caller")
-    setContentView(buildUi(caller))
-  }
-
-  private fun buildUi(caller: String): View {
-    val dp = resources.displayMetrics.density
-    fun px(v: Int) = (v * dp).toInt()
-
-    val root = LinearLayout(this).apply {
-      orientation = LinearLayout.VERTICAL
-      gravity = Gravity.CENTER_HORIZONTAL
-      setBackgroundColor(Color.parseColor("#0B1221"))
-      setPadding(px(24), px(72), px(24), px(48))
+  // The call data becomes the JS component's initial root props.
+  override fun createReactActivityDelegate(): ReactActivityDelegate =
+    object : DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled) {
+      override fun getLaunchOptions(): Bundle =
+        Bundle().apply {
+          putString("uuid", intent?.getStringExtra(EXTRA_UUID) ?: "")
+          putString("callerName", intent?.getStringExtra(EXTRA_CALLER) ?: "")
+          putString("handle", intent?.getStringExtra(EXTRA_HANDLE) ?: "")
+        }
     }
 
-    root.addView(TextView(this).apply {
-      text = caller
-      setTextColor(Color.WHITE)
-      textSize = 28f
-      gravity = Gravity.CENTER
-    })
-    root.addView(TextView(this).apply {
-      text = "Incoming call"
-      setTextColor(Color.parseColor("#9AA4B2"))
-      textSize = 16f
-      gravity = Gravity.CENTER
-      setPadding(0, px(8), 0, 0)
-    })
-
-    // Push the action row to the bottom.
-    root.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
-
-    val row = LinearLayout(this).apply {
-      orientation = LinearLayout.HORIZONTAL
-      gravity = Gravity.CENTER
-    }
-    row.addView(actionButton("Decline", Color.parseColor("#E5484D")) { act(AhoyCallActionReceiver.ACTION_DECLINE) })
-    row.addView(View(this), LinearLayout.LayoutParams(px(32), 1))
-    row.addView(actionButton("Answer", Color.parseColor("#30A46C")) { act(AhoyCallActionReceiver.ACTION_ANSWER) })
-    root.addView(row)
-    return root
-  }
-
-  private fun actionButton(label: String, color: Int, onClick: () -> Unit): Button =
-    Button(this).apply {
-      text = label
-      setTextColor(Color.WHITE)
-      setBackgroundColor(color)
-      setOnClickListener { onClick() }
-    }
-
-  // Reuse the notification's answer/decline path (single source of truth for the
-  // Telecom lifecycle). On answer, dismiss the keyguard so a secure post-answer
-  // flow can proceed (showWhenLocked alone does NOT unlock a secure device).
-  private fun act(action: String) {
-    if (uuid.isEmpty()) return finish()
-    if (action == AhoyCallActionReceiver.ACTION_ANSWER) {
+  private fun dismissKeyguardAndFinish() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && km?.isKeyguardLocked == true) {
-        km.requestDismissKeyguard(this, null)
-      }
+      if (km?.isKeyguardLocked == true) km.requestDismissKeyguard(this, null)
     }
-    sendBroadcast(
-      Intent(this, AhoyCallActionReceiver::class.java).apply {
-        this.action = action
-        putExtra(AhoyCallActionReceiver.EXTRA_UUID, uuid)
-        setPackage(packageName)
-      }
-    )
     finish()
   }
 
   companion object {
+    const val COMPONENT_NAME = "AhoyIncomingCall"
     const val EXTRA_UUID = "ahoy_uuid"
     const val EXTRA_CALLER = "ahoy_caller"
+    const val EXTRA_HANDLE = "ahoy_handle"
+
+    private val live = mutableMapOf<String, WeakReference<IncomingCallActivity>>()
+
+    @Synchronized
+    private fun register(uuid: String, a: IncomingCallActivity) {
+      if (uuid.isNotEmpty()) live[uuid] = WeakReference(a)
+    }
+
+    @Synchronized
+    private fun unregister(uuid: String, a: IncomingCallActivity) {
+      if (live[uuid]?.get() === a) live.remove(uuid)
+    }
+
+    // Close the lock-screen call UI for this uuid — answered/declined/ended from
+    // ANY source (RN buttons, notification action, or a remote cancel).
+    @Synchronized
+    fun finishFor(uuid: String) {
+      val a = live.remove(uuid)?.get() ?: return
+      a.runOnUiThread { a.dismissKeyguardAndFinish() }
+    }
   }
 }

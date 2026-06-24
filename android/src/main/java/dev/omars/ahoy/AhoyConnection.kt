@@ -31,6 +31,7 @@ class AhoyConnection(private val appContext: Context) : Connection() {
     AhoyLog.d("onAnswer uuid=${uuid()} -> setActive")
     AhoyEventBridge.answer(uuid())
     setActive()
+    IncomingCallActivity.finishFor(uuid()) // close the lock-screen ring UI
     AhoyCallRegistry.holdAllExcept(uuid()) // call waiting: hold the call we were on
     AhoyCallForegroundService.start(appContext) // refresh notification: now ongoing
   }
@@ -117,6 +118,7 @@ class AhoyConnection(private val appContext: Context) : Connection() {
   // Shared teardown: free the Connection and, if this was the last call, stop the
   // foreground service and clear notifications so Telecom releases audio focus.
   private fun cleanup(id: String) {
+    IncomingCallActivity.finishFor(id) // close the lock-screen ring UI if still up
     AhoyCallRegistry.remove(id)
     val remaining = AhoyCallRegistry.uuids()
     if (remaining.isEmpty()) {

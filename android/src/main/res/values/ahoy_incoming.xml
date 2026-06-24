@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- T6: dark background shown over the keyguard while the JS bundle boots, so a
+       cold start paints dark instead of a white flash. ReactActivity requires an
+       AppCompat-derived theme. -->
+  <color name="ahoy_incoming_bg">#0B1221</color>
+
+  <style name="Theme.Ahoy.IncomingCall" parent="Theme.AppCompat.NoActionBar">
+    <item name="android:windowBackground">@color/ahoy_incoming_bg</item>
+    <item name="android:statusBarColor">@color/ahoy_incoming_bg</item>
+    <item name="android:navigationBarColor">@color/ahoy_incoming_bg</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+</resources>

@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import { AppRegistry } from 'react-native';
 import Ahoy from './NativeAhoy';
 
@@ -19,6 +20,26 @@ export type AhoyReliabilityStatus = {
 
 export function getReliabilityStatus(): Promise<AhoyReliabilityStatus> {
   return Ahoy.getReliabilityStatus() as Promise<AhoyReliabilityStatus>;
+}
+
+// T6 (Android): props passed to the full-screen incoming-call React component.
+export type AhoyIncomingCallProps = {
+  uuid: string;
+  callerName: string;
+  handle: string;
+};
+
+// T6 (Android): register the React component shown FULL-SCREEN over the lock
+// screen for an incoming call — even when the app was killed and the screen was
+// off. The library launches a ReactActivity (showWhenLocked/turnScreenOn) that
+// renders this component; it receives { uuid, callerName, handle } as props.
+// Answer/decline by calling Ahoy.answerIncomingCall(uuid) / Ahoy.rejectCall(uuid).
+// Call this at module scope in index.js, e.g.:
+//   registerAhoyIncomingCallComponent(IncomingCallScreen);
+export function registerAhoyIncomingCallComponent(
+  Component: ComponentType<AhoyIncomingCallProps>
+) {
+  AppRegistry.registerComponent('AhoyIncomingCall', () => Component);
 }
 
 // T4 (Android): register the JS handler run by the Headless JS task when a

@@ -24,6 +24,8 @@ export default defineConfig([
     },
   },
   {
-    ignores: ['node_modules/', 'lib/'],
+    // Build artifacts (e.g. android/build test reports, generated codegen) must
+    // never be linted.
+    ignores: ['node_modules/', 'lib/', '**/build/'],
   },
 ]);
