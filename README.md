@@ -76,7 +76,7 @@ example's WebRTC media wiring + multi-device call verification are in progress.
 ## Contributing
 
 - [Development workflow](CONTRIBUTING.md#development-workflow)
-- [Scope & boundaries](docs/scope-and-boundaries.md)
+- [Engineering decisions](DECISIONS.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## License

@@ -86,7 +86,6 @@ android/generated
 nitrogen/
 
 CLAUDE.md
-DECISIONS.md
 ROADMAP.md
 
 # T4 push test scripts — never commit credentials
