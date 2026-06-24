@@ -182,6 +182,50 @@
   // no-op on iOS
 }
 
+#pragma mark - T6: OEM reliability (Android-only; iOS = safe defaults)
+
+// iOS has no OEM autostart/Doze/app-sleep killers — CallKit/PushKit are not subject
+// to them. These return safe defaults so cross-platform JS can call them blindly.
+- (NSString *)getManufacturer
+{
+  return @"apple";
+}
+
+- (NSNumber *)isIgnoringBatteryOptimizations
+{
+  return @YES; // not applicable on iOS
+}
+
+- (void)requestBatteryOptimizationExemption
+{
+  // no-op on iOS
+}
+
+- (void)openBatteryOptimizationSettings
+{
+  // no-op on iOS
+}
+
+- (void)openManufacturerAutostartSettings:(RCTPromiseResolveBlock)resolve
+                                   reject:(RCTPromiseRejectBlock)reject
+{
+  resolve(@NO); // no OEM autostart screen on iOS
+}
+
+- (void)getReliabilityStatus:(RCTPromiseResolveBlock)resolve
+                      reject:(RCTPromiseRejectBlock)reject
+{
+  resolve(@{
+    @"manufacturer" : @"apple",
+    @"manufacturerRaw" : @"Apple",
+    @"sdkInt" : @0,
+    @"isIgnoringBatteryOptimizations" : @YES,
+    @"canUseFullScreenIntent" : @YES,
+    @"hasAutostartSettings" : @NO,
+    @"dontKillMyAppUrl" : @"https://dontkillmyapp.com/apple",
+  });
+}
+
 #pragma mark - AhoyEventDelegate (Swift core -> JS)
 
 - (void)sendEvent:(NSString *)name body:(NSDictionary *)body

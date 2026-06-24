@@ -2,8 +2,10 @@ package dev.omars.ahoy
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
@@ -242,6 +244,59 @@ class AhoyModule(reactContext: ReactApplicationContext) :
       reactApplicationContext.startActivity(intent)
     } catch (e: Exception) {
       AhoyLog.d("openFullScreenIntentSettings failed: ${e.message}")
+    }
+  }
+
+  // ---- T6: OEM reliability moat ----
+
+  override fun getManufacturer(): String = OemSettings.manufacturerKey()
+
+  override fun isIgnoringBatteryOptimizations(): Boolean {
+    val pm = reactApplicationContext.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+      ?: return false
+    return pm.isIgnoringBatteryOptimizations(reactApplicationContext.packageName)
+  }
+
+  // Direct system dialog. POLICY-SENSITIVE: Play classes plain chat/calling as
+  // "Not Acceptable" for this intent — consumers need a VoIP/technical-dependency
+  // justification. Prefer openBatteryOptimizationSettings() as the default.
+  override fun requestBatteryOptimizationExemption() {
+    val intent = Intent(
+      Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+      Uri.fromParts("package", reactApplicationContext.packageName, null)
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    startActivitySafely(intent, "requestBatteryOptimizationExemption")
+  }
+
+  // Policy-safe settings list (no special permission, no package URI).
+  override fun openBatteryOptimizationSettings() {
+    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    startActivitySafely(intent, "openBatteryOptimizationSettings")
+  }
+
+  override fun openManufacturerAutostartSettings(promise: Promise) {
+    promise.resolve(OemSettings.openAutostartSettings(reactApplicationContext))
+  }
+
+  override fun getReliabilityStatus(promise: Promise) {
+    val status = Arguments.createMap().apply {
+      putString("manufacturer", OemSettings.manufacturerKey())
+      putString("manufacturerRaw", android.os.Build.MANUFACTURER ?: "")
+      putInt("sdkInt", android.os.Build.VERSION.SDK_INT)
+      putBoolean("isIgnoringBatteryOptimizations", isIgnoringBatteryOptimizations())
+      putBoolean("canUseFullScreenIntent", AhoyIncomingUi.canUseFullScreenIntent(reactApplicationContext))
+      putBoolean("hasAutostartSettings", OemSettings.hasAutostartSettings(reactApplicationContext))
+      putString("dontKillMyAppUrl", OemSettings.dontKillMyAppUrl())
+    }
+    promise.resolve(status)
+  }
+
+  private fun startActivitySafely(intent: Intent, tag: String) {
+    try {
+      reactApplicationContext.startActivity(intent)
+    } catch (e: Exception) {
+      AhoyLog.d("$tag failed: ${e.message}")
     }
   }
 

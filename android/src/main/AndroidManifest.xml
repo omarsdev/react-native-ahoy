@@ -10,6 +10,12 @@
   <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
   <!-- So the incoming/ongoing call notifications are visible on API 33+. -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- T6: the only official Doze knob. Policy-sensitive — fires the direct battery
+       dialog (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS); consumers ship a VoIP
+       justification or use the settings-list intent instead. -->
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+  <!-- T6: re-arm the self-managed PhoneAccount after reboot (no FGS start from boot). -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
   <application>
     <!-- System Telecom binds this; guarded so ONLY Telecom can bind it. -->
@@ -59,5 +65,14 @@
     <service
       android:name="dev.omars.ahoy.AhoyHeadlessTaskService"
       android:exported="false" />
+
+    <!-- T6: re-register the self-managed PhoneAccount after reboot. -->
+    <receiver
+      android:name="dev.omars.ahoy.AhoyBootReceiver"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

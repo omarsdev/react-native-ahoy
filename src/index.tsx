@@ -4,6 +4,23 @@ import Ahoy from './NativeAhoy';
 export default Ahoy;
 export type { Spec as AhoyModule } from './NativeAhoy';
 
+// T6: typed shape of getReliabilityStatus() (Codegen returns an untyped Object).
+// Drive an OEM-aware onboarding flow from these fields. On iOS all values are
+// safe defaults (manufacturer "apple", everything "granted").
+export type AhoyReliabilityStatus = {
+  manufacturer: string; // normalized key: xiaomi/oppo/oneplus/vivo/huawei/honor/samsung/…/generic
+  manufacturerRaw: string; // raw Build.MANUFACTURER
+  sdkInt: number; // Android API level (0 on iOS)
+  isIgnoringBatteryOptimizations: boolean;
+  canUseFullScreenIntent: boolean;
+  hasAutostartSettings: boolean; // a known OEM autostart screen resolves on this device
+  dontKillMyAppUrl: string; // per-vendor dontkillmyapp.com link
+};
+
+export function getReliabilityStatus(): Promise<AhoyReliabilityStatus> {
+  return Ahoy.getReliabilityStatus() as Promise<AhoyReliabilityStatus>;
+}
+
 // T4 (Android): register the JS handler run by the Headless JS task when a
 // push-delivered incoming call wakes the app while backgrounded/killed. Call
 // this at module scope in index.js, e.g.:

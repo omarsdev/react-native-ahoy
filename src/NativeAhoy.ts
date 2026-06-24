@@ -47,6 +47,24 @@ export interface Spec extends TurboModule {
   canUseFullScreenIntent(): Promise<boolean>; // Android
   openFullScreenIntentSettings(): void; // Android (no-op on iOS)
 
+  // ---- T6: OEM reliability moat (Android-only; iOS = safe defaults) ----
+  // Build.MANUFACTURER lowercased + normalized (xiaomi/oppo/oneplus/vivo/huawei/
+  // honor/samsung/asus/letv/nokia/generic). iOS returns "apple".
+  getManufacturer(): string;
+  // Doze/App-Standby whitelist — the ONLY official cross-OEM battery API. iOS: true.
+  isIgnoringBatteryOptimizations(): boolean;
+  // Direct system dialog (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS). Opt-in:
+  // Play policy requires a VoIP justification — prefer openBatteryOptimizationSettings.
+  requestBatteryOptimizationExemption(): void; // Android (no-op on iOS)
+  // Policy-safer settings list (ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).
+  openBatteryOptimizationSettings(): void; // Android (no-op on iOS)
+  // Vendor autostart/protected-apps screen (resolve-before-launch). Resolves false
+  // when no known OEM activity exists for this device. iOS: false.
+  openManufacturerAutostartSettings(): Promise<boolean>; // Android
+  // Aggregate snapshot for an onboarding/status screen. Keys: manufacturer,
+  // sdkInt, isIgnoringBatteryOptimizations, canUseFullScreenIntent, hasAutostartSettings.
+  getReliabilityStatus(): Promise<Object>;
+
   // ---- typed events: property MUST be readonly and start with "on" ----
   // Codegen generates emitOnAnswerCall / emitOnEndCall / emitOnDisplayIncomingCall.
   readonly onAnswerCall: CodegenTypes.EventEmitter<{ uuid: string }>;

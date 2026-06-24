@@ -8,7 +8,10 @@ import {
   Platform,
   PermissionsAndroid,
 } from 'react-native';
-import Ahoy from 'react-native-ahoy';
+import Ahoy, {
+  getReliabilityStatus,
+  type AhoyReliabilityStatus,
+} from 'react-native-ahoy';
 
 // Hermes has no crypto.randomUUID; small RFC4122-v4 generator for the demo.
 function uuidv4(): string {
@@ -25,6 +28,7 @@ function uuidv4(): string {
 // guard, notifications). `lastCall` is just the uuid the per-call buttons target.
 export default function App() {
   const [log, setLog] = useState<string[]>([]);
+  const [status, setStatus] = useState<AhoyReliabilityStatus | null>(null);
   const lastCall = useRef<string | null>(null);
 
   const append = (line: string) => {
@@ -49,6 +53,15 @@ export default function App() {
     Ahoy.getVoipPushToken()
       .then((t) => append(`push token: ${t}`))
       .catch((e) => append(`getVoipPushToken: ${e}`));
+
+    // T6: snapshot the device reliability state on launch (re-check on resume in a
+    // real app — OEM toggles reset on reboot/OS update).
+    getReliabilityStatus()
+      .then((s) => {
+        setStatus(s);
+        append(`reliability: ${JSON.stringify(s)}`);
+      })
+      .catch((e) => append(`getReliabilityStatus: ${e}`));
 
     const subs = [
       Ahoy.onStartCallAction(({ uuid }) =>
@@ -139,6 +152,17 @@ export default function App() {
     Ahoy.endAllCalls();
   };
 
+  // T6: OEM reliability surface. Each button is one native call; the status line
+  // shows getReliabilityStatus() so onboarding can branch on the real device state.
+  const refreshStatus = () => {
+    getReliabilityStatus()
+      .then((s) => {
+        setStatus(s);
+        append(`reliability: ${JSON.stringify(s)}`);
+      })
+      .catch((e) => append(`getReliabilityStatus: ${e}`));
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Ahoy — native test harness</Text>
@@ -151,6 +175,38 @@ export default function App() {
         <Button label="Resume last" onPress={() => holdLast(false)} />
         <Button label="End last" onPress={endLast} />
         <Button label="End all" onPress={endAll} />
+      </View>
+      <Text style={styles.subtitle}>Reliability (T6)</Text>
+      {status && (
+        <Text style={styles.status}>
+          {status.manufacturer} (api {status.sdkInt}) · battery-exempt:{' '}
+          {status.isIgnoringBatteryOptimizations ? 'yes' : 'no'} · fsi:{' '}
+          {status.canUseFullScreenIntent ? 'yes' : 'no'} · autostart:{' '}
+          {status.hasAutostartSettings ? 'yes' : 'no'}
+        </Text>
+      )}
+      <View style={styles.row}>
+        <Button label="Reliability status" onPress={refreshStatus} />
+        <Button
+          label="Battery settings"
+          onPress={() => Ahoy.openBatteryOptimizationSettings()}
+        />
+        <Button
+          label="Battery exempt"
+          onPress={() => Ahoy.requestBatteryOptimizationExemption()}
+        />
+        <Button
+          label="OEM autostart"
+          onPress={() =>
+            Ahoy.openManufacturerAutostartSettings().then((ok) =>
+              append(`openManufacturerAutostartSettings -> ${ok}`)
+            )
+          }
+        />
+        <Button
+          label="FSI settings"
+          onPress={() => Ahoy.openFullScreenIntentSettings()}
+        />
       </View>
       <Text style={styles.subtitle}>Events</Text>
       <ScrollView style={styles.log}>
@@ -184,6 +240,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   buttonText: { color: '#fff', fontWeight: '600' },
+  status: { fontFamily: 'Menlo', fontSize: 11, color: '#333', marginBottom: 6 },
   log: { flex: 1, marginTop: 4 },
   logLine: { fontFamily: 'Menlo', fontSize: 11, paddingVertical: 1 },
 });
