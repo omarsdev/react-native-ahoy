@@ -33,10 +33,11 @@ let ahoyLog = Logger(subsystem: "dev.omars.ahoy", category: "ahoy")
   @objc public static let shared = AhoyCallKit()
 
   // Set by the TurboModule once JS is up. On cold start it's nil, so push-time
-  // events are buffered and flushed here.
-  @objc public weak var eventDelegate: AhoyEventDelegate? {
-    didSet { flushBufferedEvents() }
-  }
+  // events are buffered. NOTE: don't flush here — the module's generated event
+  // emitter isn't wired until RN calls setEventEmitterCallback (later than init);
+  // emitting before that calls an empty std::function and crashes. Ahoy.mm calls
+  // flushBufferedEvents() from setEventEmitterCallback instead.
+  @objc public weak var eventDelegate: AhoyEventDelegate?
 
   private let provider: CXProvider
   private let callController = CXCallController()
@@ -56,7 +57,8 @@ let ahoyLog = Logger(subsystem: "dev.omars.ahoy", category: "ahoy")
     }
   }
 
-  private func flushBufferedEvents() {
+  // Called from Ahoy.mm once the TurboModule event emitter is connected.
+  @objc public func flushBufferedEvents() {
     guard eventDelegate != nil, !bufferedEvents.isEmpty else { return }
     log("flushing \(bufferedEvents.count) buffered event(s) to JS")
     let pending = bufferedEvents

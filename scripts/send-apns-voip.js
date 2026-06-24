@@ -16,7 +16,7 @@
  * Config via env vars:
  *   APNS_KEY_ID=ABC123DEFG          (the 10-char Key ID)
  *   APNS_TEAM_ID=FKL5JV5G7M         (your Apple Team ID)
- *   APNS_BUNDLE_ID=dev.omars.ahoy   (default)
+ *   APNS_BUNDLE_ID=ahoy.example     (default — the example app's bundle id)
  *   APNS_KEY=./AuthKey.p8           (default)
  *   APNS_HOST=sandbox|prod          (default sandbox — dev builds use sandbox)
  *
@@ -38,7 +38,7 @@ const callerName = process.argv[4] || 'Ada Lovelace';
 
 const KEY_ID = process.env.APNS_KEY_ID;
 const TEAM_ID = process.env.APNS_TEAM_ID;
-const BUNDLE_ID = process.env.APNS_BUNDLE_ID || 'dev.omars.ahoy';
+const BUNDLE_ID = process.env.APNS_BUNDLE_ID || 'ahoy.example';
 const KEY_PATH = path.resolve(__dirname, process.env.APNS_KEY || 'AuthKey.p8');
 const HOST =
   (process.env.APNS_HOST || 'sandbox') === 'prod'

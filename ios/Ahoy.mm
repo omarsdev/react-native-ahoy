@@ -32,6 +32,14 @@
   return std::make_shared<facebook::react::NativeAhoySpecJSI>(params);
 }
 
+// RN wires the event emitter here (after init). Only now is it safe to emit, so
+// replay any events buffered during a cold-start VoIP push.
+- (void)setEventEmitterCallback:(EventEmitterCallbackWrapper *)eventEmitterCallbackWrapper
+{
+  [super setEventEmitterCallback:eventEmitterCallbackWrapper];
+  [_callKit flushBufferedEvents];
+}
+
 #pragma mark - Setup / lifecycle
 
 - (void)setup:(NSDictionary *)options
