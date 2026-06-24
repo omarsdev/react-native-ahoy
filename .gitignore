@@ -94,5 +94,11 @@ scripts/node_modules/
 scripts/service-account.json
 scripts/*.p8
 
+# T7 reference backend — never commit credentials
+examples/server/node_modules/
+examples/server/.env
+examples/server/*.p8
+examples/server/service-account.json
+
 example/android/app/google-services.json
 example/ios/GoogleService-Info.plist
