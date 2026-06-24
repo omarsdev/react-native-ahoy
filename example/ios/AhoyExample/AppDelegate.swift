@@ -2,6 +2,7 @@ import UIKit
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
+import Ahoy
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -20,6 +21,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     reactNativeDelegate = delegate
     reactNativeFactory = factory
+
+    // T4: set up the VoIP PushKit registry at launch so it exists for a
+    // cold-start push (before JS). Creates the shared CXProvider too.
+    AhoyVoipPushManager.shared.register()
 
     window = UIWindow(frame: UIScreen.main.bounds)
 

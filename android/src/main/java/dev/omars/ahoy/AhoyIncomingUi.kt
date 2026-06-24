@@ -38,12 +38,21 @@ object AhoyIncomingUi {
   fun buildCallNotification(context: Context): Notification {
     ensureChannel(context)
     val ringing = AhoyCallRegistry.ringingConnection()
-    return if (ringing != null) buildIncoming(context, ringing) else buildOngoing(context)
+    return if (ringing != null) {
+      buildIncoming(context, AhoyCallRegistry.idOf(ringing) ?: "", ringing.displayLabel())
+    } else {
+      buildOngoing(context)
+    }
   }
 
-  private fun buildIncoming(context: Context, connection: AhoyConnection): Notification {
-    val uuid = AhoyCallRegistry.idOf(connection) ?: ""
-    val name = connection.displayLabel()
+  // T4: incoming notification built straight from the push payload, before any
+  // Telecom connection exists (cold-start). Answer/Decline target the push uuid.
+  fun buildIncomingFromPush(context: Context, uuid: String, callerName: String): Notification {
+    ensureChannel(context)
+    return buildIncoming(context, uuid, callerName.ifEmpty { "Incoming call" })
+  }
+
+  private fun buildIncoming(context: Context, uuid: String, name: String): Notification {
     val person = Person.Builder().setName(name).setImportant(true).build()
     val answer = actionIntent(context, AhoyCallActionReceiver.ACTION_ANSWER, uuid)
     val decline = actionIntent(context, AhoyCallActionReceiver.ACTION_DECLINE, uuid)

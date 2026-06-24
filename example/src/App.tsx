@@ -44,6 +44,12 @@ export default function App() {
       .then(() => append('setup ok'))
       .catch((e) => append(`setup failed: ${e}`));
 
+    // T4: log the push token (Android FCM / iOS VoIP) so it's easy to copy for
+    // the manual send scripts. Also fires via the onVoipPushToken event on iOS.
+    Ahoy.getVoipPushToken()
+      .then((t) => append(`push token: ${t}`))
+      .catch((e) => append(`getVoipPushToken: ${e}`));
+
     const subs = [
       Ahoy.onStartCallAction(({ uuid }) =>
         append(`event onStartCallAction uuid=${uuid}`)
@@ -65,6 +71,9 @@ export default function App() {
         append('event onDidDeactivateAudioSession')
       ),
       Ahoy.onProviderReset(() => append('event onProviderReset')),
+      Ahoy.onVoipPushToken(({ token }) =>
+        append(`event onVoipPushToken: ${token}`)
+      ),
     ];
     return () => subs.forEach((s) => s.remove());
   }, []);

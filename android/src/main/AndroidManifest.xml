@@ -32,5 +32,19 @@
     <receiver
       android:name="dev.omars.ahoy.AhoyCallActionReceiver"
       android:exported="false" />
+
+    <!-- T4: receives the high-priority data-only FCM call invite. -->
+    <service
+      android:name="dev.omars.ahoy.AhoyMessagingService"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
+
+    <!-- T4: runs the AhoyIncomingCall Headless JS task while backgrounded/killed. -->
+    <service
+      android:name="dev.omars.ahoy.AhoyHeadlessTaskService"
+      android:exported="false" />
   </application>
 </manifest>

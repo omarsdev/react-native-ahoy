@@ -1,7 +1,23 @@
+import { AppRegistry } from 'react-native';
 import Ahoy from './NativeAhoy';
 
 export default Ahoy;
 export type { Spec as AhoyModule } from './NativeAhoy';
+
+// T4 (Android): register the JS handler run by the Headless JS task when a
+// push-delivered incoming call wakes the app while backgrounded/killed. Call
+// this at module scope in index.js, e.g.:
+//   registerAhoyIncomingCallTask(async ({ uuid, handle, callerName }) => { ... });
+export function registerAhoyIncomingCallTask(
+  handler: (data: {
+    uuid: string;
+    handle: string;
+    callerName: string;
+    fromPushKit: boolean;
+  }) => Promise<void>
+) {
+  AppRegistry.registerHeadlessTask('AhoyIncomingCall', () => handler);
+}
 
 // Numeric end-call reason codes. Values 1–5 match iOS CXCallEndedReason raw
 // values exactly (failed=1, remoteEnded=2, unanswered=3, answeredElsewhere=4,

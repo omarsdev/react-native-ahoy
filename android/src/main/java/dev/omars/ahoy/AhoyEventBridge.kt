@@ -31,4 +31,5 @@ object AhoyEventBridge {
   fun startCallAction(uuid: String, handle: String) = module?.sendStartCallAction(uuid, handle)
   fun toggleHold(uuid: String, onHold: Boolean) = module?.sendToggleHold(uuid, onHold)
   fun toggleMute(uuid: String, muted: Boolean) = module?.sendToggleMute(uuid, muted)
+  fun voipPushToken(token: String) = module?.sendVoipPushToken(token)
 }

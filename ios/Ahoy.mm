@@ -1,5 +1,6 @@
 #import "Ahoy.h"
 #import <CallKit/CallKit.h> // must precede Ahoy-Swift.h: it exposes AhoyCallKit's <CXProviderDelegate>
+#import <PushKit/PushKit.h> // likewise: AhoyVoipPushManager's <PKPushRegistryDelegate>
 #import "Ahoy-Swift.h"      // compiler-generated; product-module name is "Ahoy"
 
 // Conform to the Swift event delegate in a class extension so the Swift CallKit
@@ -19,8 +20,8 @@
 - (instancetype)init
 {
   if (self = [super init]) {
-    _callKit = [AhoyCallKit new];
-    _callKit.eventDelegate = self;
+    _callKit = [AhoyCallKit shared]; // shared so it (and its CXProvider) exist at launch
+    _callKit.eventDelegate = self;   // flushes any cold-start buffered push events
   }
   return self;
 }
@@ -149,6 +150,15 @@
   resolve(@([_callKit isCallActive:uuid]));
 }
 
+#pragma mark - T4: push wakeup
+
+- (void)getVoipPushToken:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject
+{
+  NSString *token = [AhoyVoipPushManager shared].currentToken;
+  resolve(token ?: (id)kCFNull);
+}
+
 #pragma mark - AhoyEventDelegate (Swift core -> JS)
 
 - (void)sendEvent:(NSString *)name body:(NSDictionary *)body
@@ -171,6 +181,8 @@
     [self emitOnDidActivateAudioSession];
   } else if ([name isEqualToString:@"onDidDeactivateAudioSession"]) {
     [self emitOnDidDeactivateAudioSession];
+  } else if ([name isEqualToString:@"onVoipPushToken"]) {
+    [self emitOnVoipPushToken:body];
   } else {
     NSLog(@"Ahoy: unhandled event %@", name);
   }

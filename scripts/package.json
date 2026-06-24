@@ -1,0 +1,13 @@
+{
+  "name": "ahoy-test-scripts",
+  "private": true,
+  "description": "Manual push test senders for react-native-ahoy (T4)",
+  "scripts": {
+    "fcm": "node send-fcm.js",
+    "apns": "node send-apns-voip.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

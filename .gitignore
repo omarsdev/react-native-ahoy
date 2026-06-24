@@ -88,3 +88,11 @@ nitrogen/
 CLAUDE.md
 DECISIONS.md
 ROADMAP.md
+
+# T4 push test scripts — never commit credentials
+scripts/node_modules/
+scripts/service-account.json
+scripts/*.p8
+
+example/android/app/google-services.json
+example/ios/GoogleService-Info.plist

@@ -37,6 +37,10 @@ export interface Spec extends TurboModule {
   checkIsInManagedCall(): Promise<boolean>; // Android
   isCallActive(uuid: string): Promise<boolean>; // iOS
 
+  // ---- T4: push wakeup ----
+  // iOS VoIP (PushKit) token to register with your backend; null until issued.
+  getVoipPushToken(): Promise<string | null>; // iOS
+
   // ---- typed events: property MUST be readonly and start with "on" ----
   // Codegen generates emitOnAnswerCall / emitOnEndCall / emitOnDisplayIncomingCall.
   readonly onAnswerCall: CodegenTypes.EventEmitter<{ uuid: string }>;
@@ -62,6 +66,8 @@ export interface Spec extends TurboModule {
   readonly onProviderReset: CodegenTypes.EventEmitter<void>;
   readonly onDidActivateAudioSession: CodegenTypes.EventEmitter<void>;
   readonly onDidDeactivateAudioSession: CodegenTypes.EventEmitter<void>;
+  // T4: iOS VoIP (PushKit) token updated — send it to your push backend.
+  readonly onVoipPushToken: CodegenTypes.EventEmitter<{ token: string }>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('Ahoy');

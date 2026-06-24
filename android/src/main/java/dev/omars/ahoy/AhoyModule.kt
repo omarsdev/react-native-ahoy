@@ -193,6 +193,36 @@ class AhoyModule(reactContext: ReactApplicationContext) :
     promise.resolve(AhoyCallRegistry.byId(uuid) != null)
   }
 
+  // Returns the platform push token: FCM token on Android (iOS returns its VoIP
+  // token). Resolves null if firebase-messaging isn't on the consumer's classpath.
+  // Retries on SERVICE_NOT_AVAILABLE — the first getToken() right after install
+  // commonly fails before Play Services is ready, then succeeds seconds later.
+  override fun getVoipPushToken(promise: Promise) {
+    fetchFcmToken(promise, retriesLeft = 4)
+  }
+
+  private fun fetchFcmToken(promise: Promise, retriesLeft: Int) {
+    try {
+      com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+        .addOnSuccessListener { token -> promise.resolve(token) }
+        .addOnFailureListener { e ->
+          if (retriesLeft > 0) {
+            AhoyLog.d("getVoipPushToken failed (${e.message}); retrying, $retriesLeft left")
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+              { fetchFcmToken(promise, retriesLeft - 1) },
+              2000
+            )
+          } else {
+            AhoyLog.d("getVoipPushToken giving up: ${e.message}")
+            promise.reject("ahoy_fcm", e)
+          }
+        }
+    } catch (e: Throwable) {
+      AhoyLog.d("getVoipPushToken: firebase-messaging unavailable (${e.message})")
+      promise.resolve(null)
+    }
+  }
+
   // ---- event emitters (called by AhoyEventBridge from Telecom callbacks) ----
 
   fun sendAnswerCall(uuid: String) =
@@ -225,6 +255,9 @@ class AhoyModule(reactContext: ReactApplicationContext) :
       putString("uuid", uuid)
       putBoolean("muted", muted)
     })
+
+  fun sendVoipPushToken(token: String) =
+    emitOnVoipPushToken(Arguments.createMap().apply { putString("token", token) })
 
   companion object {
     const val NAME = NativeAhoySpec.NAME

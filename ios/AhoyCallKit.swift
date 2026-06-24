@@ -6,7 +6,8 @@ import os
 // Single logger for the whole module. Messages are marked .public so they show
 // in full (not "<private>") in idevicesyslog / Console on a real device:
 //   idevicesyslog -p AhoyExample -m "[Ahoy]"
-private let ahoyLog = Logger(subsystem: "dev.omars.ahoy", category: "ahoy")
+// Module-internal so all Ahoy Swift files share one logger.
+let ahoyLog = Logger(subsystem: "dev.omars.ahoy", category: "ahoy")
 
 // The Obj-C++ TurboModule (Ahoy.mm) implements this and routes each event to the
 // generated typed emitter (emitOnAnswerCall, emitOnToggleMute, …). Keeping the
@@ -26,13 +27,42 @@ private let ahoyLog = Logger(subsystem: "dev.omars.ahoy", category: "ahoy")
 //   xcrun simctl spawn booted log stream --predicate 'eventMessage CONTAINS "[Ahoy]"'
 @objc public class AhoyCallKit: NSObject {
 
-  @objc public weak var eventDelegate: AhoyEventDelegate?
+  // Shared instance: the CXProvider must exist at app launch (for a VoIP-push
+  // cold start, before the TurboModule/JS exist), so it lives here, not per
+  // module. The TurboModule and the VoIP push manager both use this.
+  @objc public static let shared = AhoyCallKit()
+
+  // Set by the TurboModule once JS is up. On cold start it's nil, so push-time
+  // events are buffered and flushed here.
+  @objc public weak var eventDelegate: AhoyEventDelegate? {
+    didSet { flushBufferedEvents() }
+  }
 
   private let provider: CXProvider
   private let callController = CXCallController()
   // True between requesting an outgoing call and the request completing — closes
   // the rapid-tap race window for the single-outgoing protector.
   private var placingOutgoing = false
+  // Events emitted before JS attached (cold-start VoIP push). Replayed on attach.
+  private var bufferedEvents: [(String, [String: Any])] = []
+
+  // Emit to JS, or buffer until the bridge attaches (cold-start replay).
+  func emitOrBuffer(_ name: String, _ body: [String: Any]) {
+    if let delegate = eventDelegate {
+      delegate.sendEvent(name, body: body)
+    } else {
+      log("buffering \(name) until JS attaches")
+      bufferedEvents.append((name, body))
+    }
+  }
+
+  private func flushBufferedEvents() {
+    guard eventDelegate != nil, !bufferedEvents.isEmpty else { return }
+    log("flushing \(bufferedEvents.count) buffered event(s) to JS")
+    let pending = bufferedEvents
+    bufferedEvents.removeAll()
+    pending.forEach { eventDelegate?.sendEvent($0.0, body: $0.1) }
+  }
 
   private func log(_ message: String) {
     ahoyLog.notice("[Ahoy] \(message, privacy: .public)")
@@ -136,6 +166,32 @@ private let ahoyLog = Logger(subsystem: "dev.omars.ahoy", category: "ahoy")
       } else {
         self?.log("reportNewIncomingCall OK  uuid=\(uuid) (CallKit UI should present)")
       }
+    }
+  }
+
+  // T4: report an incoming call from a VoIP push. MUST run synchronously inside
+  // the PushKit delegate. Emits onDisplayIncomingCall (fromPushKit=true), buffered
+  // if JS isn't attached yet (cold start). `completion` fires after CallKit's.
+  @objc public func reportPushIncomingCall(_ uuid: String, handle: String,
+                                           callerName: String, hasVideo: Bool,
+                                           completion: @escaping (Error?) -> Void) {
+    log("reportPushIncomingCall (PushKit)  uuid=\(uuid) handle=\(handle) caller=\(callerName)")
+    guard let id = UUID(uuidString: uuid) else {
+      completion(NSError(domain: "Ahoy", code: -1)); return
+    }
+    let update = CXCallUpdate()
+    update.remoteHandle = CXHandle(type: .generic, value: handle)
+    update.localizedCallerName = callerName.isEmpty ? nil : callerName
+    update.hasVideo = hasVideo
+    update.supportsHolding = true
+    provider.reportNewIncomingCall(with: id, update: update) { [weak self] error in
+      if let error = error {
+        self?.log("reportPushIncomingCall FAILED: \(error.localizedDescription)")
+      } else {
+        self?.emitOrBuffer("onDisplayIncomingCall",
+                           ["uuid": uuid, "handle": handle, "fromPushKit": true])
+      }
+      completion(error)
     }
   }
 
